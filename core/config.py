@@ -1,5 +1,3 @@
-
-
 import json
 import logging
 from datetime import datetime, timezone
@@ -25,7 +23,6 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./vesper.db"
     create_tables_on_startup: bool = False
 
-  
     jwt_secret_key: str = Field(min_length=32, repr=False)
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_issuer: str = "vesper-api"
@@ -40,7 +37,6 @@ class Settings(BaseSettings):
     login_max_attempts: int = 5
     login_lockout_minutes: int = 15
 
-   
     assignment_report_timeout_minutes: int = 30
     sync_max_batch: int = 200
     sync_max_clock_skew_minutes: int = 10
@@ -50,14 +46,12 @@ class Settings(BaseSettings):
     moon_dark_max_illumination: float = 0.25
     moon_partial_max_illumination: float = 0.75
 
-   
     seed_coordinator_first_name: str = ""
     seed_coordinator_last_name: str = ""
     seed_coordinator_email: str = ""
     seed_coordinator_phone: str = ""
     seed_coordinator_password: SecretStr = SecretStr("")
 
-   
     satellite_provider: Literal["static", "earth_engine"] = "static"
     earth_engine_project: str = ""
     earth_engine_service_account: str = ""
@@ -113,8 +107,6 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
-
 
 
 SENSITIVE_KEYS = {

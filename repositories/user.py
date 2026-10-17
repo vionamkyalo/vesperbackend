@@ -1,4 +1,3 @@
-
 from sqlalchemy.orm import Session
 
 from models.user import User
@@ -6,34 +5,20 @@ from models.user import User
 
 class UserRepository:
     def create(self, db: Session, user: User) -> User:
-      
+
         db.add(user)
         db.flush()
         return user
 
     def get(self, db: Session, user_id) -> User | None:
-        return (
-            db.query(User)
-            .filter(User.user_id == user_id)
-            .first()
-        )
+        return db.query(User).filter(User.user_id == user_id).first()
 
     def get_by_email(self, db: Session, email: str) -> User | None:
         normalized_email = email.strip().lower()
-        return (
-            db.query(User)
-            .filter(User.email == normalized_email)
-            .first()
-        )
+        return db.query(User).filter(User.email == normalized_email).first()
 
-    def get_by_phone(
-        self, db: Session, phone_number: str
-    ) -> User | None:
-        return (
-            db.query(User)
-            .filter(User.phone_number == phone_number)
-            .first()
-        )
+    def get_by_phone(self, db: Session, phone_number: str) -> User | None:
+        return db.query(User).filter(User.phone_number == phone_number).first()
 
     def list_users(
         self,
@@ -59,11 +44,7 @@ class UserRepository:
         )
 
     def count_by_role(self, db: Session, role) -> int:
-        return (
-            db.query(User)
-            .filter(User.role == role)
-            .count()
-        )
+        return db.query(User).filter(User.role == role).count()
 
 
 user_repository = UserRepository()

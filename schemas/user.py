@@ -10,7 +10,6 @@ PHONE_PATTERN = r"^\+[1-9]\d{7,14}$"
 
 
 class UserCreate(BaseModel):
- 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     first_name: str = Field(min_length=1, max_length=100)
@@ -42,7 +41,6 @@ class PasswordChange(BaseModel):
 
 
 class UserRead(BaseModel):
-  
     user_id: uuid.UUID
     first_name: str
     last_name: str

@@ -1,4 +1,3 @@
-
 import logging
 import uuid
 
@@ -93,10 +92,7 @@ class UserService:
             if existing is not None and existing.user_id != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "A user with this email or phone number "
-                        "already exists."
-                    ),
+                    detail=("A user with this email or phone number already exists."),
                 )
 
         if phone_number is not None:
@@ -105,14 +101,11 @@ class UserService:
             if existing is not None and existing.user_id != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "A user with this email or phone number "
-                        "already exists."
-                    ),
+                    detail=("A user with this email or phone number already exists."),
                 )
 
     def _commit(self, db: Session) -> None:
-        
+
         try:
             db.commit()
         except IntegrityError as error:
@@ -137,11 +130,7 @@ class UserService:
         if not settings.seed_coordinator_configured:
             return None
 
-        if (
-            user_repository.count_by_role(
-                db, UserRole.PATROL_COORDINATOR
-            ) > 0
-        ):
+        if user_repository.count_by_role(db, UserRole.PATROL_COORDINATOR) > 0:
             return None
 
         password = settings.seed_coordinator_password.get_secret_value()
@@ -155,22 +144,17 @@ class UserService:
             validate_password_strength(password)
         except ValidationFailedError as error:
             raise RuntimeError(
-                "The configured coordinator password does not meet "
-                "the password policy."
+                "The configured coordinator password does not meet the password policy."
             ) from error
 
         email = settings.seed_coordinator_email.strip().lower()
         phone_number = settings.seed_coordinator_phone
 
         if user_repository.get_by_email(db, email) is not None:
-            raise RuntimeError(
-                "SEED_COORDINATOR_EMAIL already belongs to another user"
-            )
+            raise RuntimeError("SEED_COORDINATOR_EMAIL already belongs to another user")
 
         if user_repository.get_by_phone(db, phone_number) is not None:
-            raise RuntimeError(
-                "SEED_COORDINATOR_PHONE already belongs to another user"
-            )
+            raise RuntimeError("SEED_COORDINATOR_PHONE already belongs to another user")
 
         user = User(
             first_name=settings.seed_coordinator_first_name,
@@ -238,10 +222,7 @@ class UserService:
             logger.warning("Officer creation encountered a constraint conflict")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "A user with this email or phone number "
-                    "already exists."
-                ),
+                detail=("A user with this email or phone number already exists."),
             ) from error
         except SQLAlchemyError as error:
             db.rollback()
@@ -266,10 +247,7 @@ class UserService:
     ) -> User:
         self.check_active(current_user)
 
-        if (
-            not self.is_coordinator(current_user)
-            and current_user.user_id != user_id
-        ):
+        if not self.is_coordinator(current_user) and current_user.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User was not found.",
@@ -352,10 +330,7 @@ class UserService:
                     ),
                 )
 
-            if (
-                user.user_id == current_user.user_id
-                and changes["is_active"] is False
-            ):
+            if user.user_id == current_user.user_id and changes["is_active"] is False:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="The coordinator cannot deactivate their own account.",

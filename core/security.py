@@ -1,5 +1,3 @@
-
-
 import json
 import logging
 import re
@@ -29,8 +27,6 @@ from models.user import User, UserRole
 
 logger = logging.getLogger("vesper.security")
 audit_logger = logging.getLogger("vesper.audit")
-
-
 
 
 class VesperError(Exception):
@@ -92,7 +88,7 @@ async def _vesper_error(request: Request, exc: VesperError) -> JSONResponse:
 async def _validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    
+
     errors = []
     for error in exc.errors():
         location = [str(part) for part in error.get("loc", [])]
@@ -135,8 +131,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(Exception, _unhandled_error)
 
 
-
-
 _hasher = PasswordHasher()
 _DUMMY_HASH = _hasher.hash("dummy-password-for-timing")
 COMMON_PASSWORDS = {
@@ -173,7 +167,6 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str | None) -> bool:
     if not password_hash:
-   
         try:
             _hasher.verify(_DUMMY_HASH, password)
         except VerificationError:
@@ -183,8 +176,6 @@ def verify_password(password: str, password_hash: str | None) -> bool:
         return _hasher.verify(password_hash, password)
     except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
-
-
 
 
 ACCESS_TOKEN = "access"
@@ -249,12 +240,7 @@ def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
     return payload
 
 
-
-
-
 class SlidingWindowLimiter:
-   
-
     def __init__(self, limit: int, window_seconds: int = 60):
         self.limit = limit
         self.window_seconds = window_seconds
@@ -274,8 +260,6 @@ class SlidingWindowLimiter:
 
 
 class LoginAttemptTracker:
-  
-
     def __init__(self, max_attempts: int, lockout_seconds: int):
         self.max_attempts = max_attempts
         self.lockout_seconds = lockout_seconds
@@ -329,12 +313,11 @@ def reset_login_tracker() -> None:
     _login_tracker = None
 
 
-
 _bearer = HTTPBearer(auto_error=False)
 
 
 def user_from_token(db: Session, token: str) -> User:
-   
+
     payload = decode_token(token, ACCESS_TOKEN)
     user = db.get(User, uuid.UUID(payload["sub"]))
     if user is None or not user.is_active or payload.get("role") != user.role.value:
@@ -367,9 +350,6 @@ require_any_user = require_role(UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFF
 
 def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
-
-
-
 
 
 def audit_log(
@@ -411,8 +391,6 @@ async def _reject(
 
 
 class SecurityMiddleware:
-   
-
     def __init__(self, app: ASGIApp, settings: Settings, limiter: SlidingWindowLimiter):
         self.app = app
         self.max_bytes = settings.max_request_bytes
@@ -494,7 +472,7 @@ class SecurityMiddleware:
 
 
 def apply_security(app: FastAPI, settings: Settings) -> None:
-    
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
