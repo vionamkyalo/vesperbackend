@@ -7,17 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_valida
 
 from models.inspection import InspectionOutcome, InspectionType
 
-# Decimals from the database are sent to the frontend as numbers, not strings
 DecimalNumber = Annotated[
     Decimal, PlainSerializer(float, return_type=float, when_used="json")
 ]
 
 
 class InspectionCreate(BaseModel):
-    # Unknown fields are rejected so a client cannot set fields it should not (OWASP A01 mass assignment)
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    # inspection_id is generated on the phone so a retried sync never creates a duplicate
     inspection_id: uuid.UUID
     alert_id: uuid.UUID | None = None
     zone_id: uuid.UUID
@@ -37,7 +34,6 @@ class InspectionCreate(BaseModel):
     @field_validator("inspected_at")
     @classmethod
     def require_timezone(cls, value):
-        # Phone timestamps must say which time zone they are in; they are stored in UTC
         if value.tzinfo is None:
             raise ValueError(
                 "inspected_at must include a time zone, for example 2026-10-15T21:30:00Z"

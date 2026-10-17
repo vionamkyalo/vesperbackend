@@ -5,7 +5,6 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-import models.zone_setting_history  # noqa: F401
 from models.inspection import Inspection, InspectionOutcome, InspectionType
 from datetime import timedelta
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -251,7 +250,6 @@ def valid_body(zone_id=None, alert_id=None, **changes):
 
 
 def stand_in_role_check(*roles):
-    # Used only until core/security.py with real sign-in is merged from the users branch
     def checker(
         x_test_user: str | None = Header(default=None), db: Session = Depends(get_db)
     ):
@@ -470,7 +468,7 @@ class TestInspectionRepository:
         assert found.rigs_observed == 0
         assert found.notes is None
 
-    # ---- positive: every type and outcome round-trips through the database
+    # ---- positive cases
     @pytest.mark.parametrize("inspection_type", list(InspectionType))
     def test_repository_create_each_inspection_type(
         self, db_session, sample_officer, sample_zone, inspection_type
@@ -534,7 +532,7 @@ class TestInspectionRepository:
         assert saved is landing_inspection
         assert saved.rigs_observed == 9
 
-    # ---- negative: the database refuses links to records that do not exist
+    # ---- negative cases
     @pytest.mark.parametrize("missing_link", ["zone_id", "officer_id", "alert_id"])
     def test_repository_create_unknown_link_rejected(
         self, db_session, sample_officer, sample_zone, missing_link
@@ -691,12 +689,11 @@ class TestInspectionSchema:
         assert data["officer_id"] == str(landing_inspection.officer_id)
         assert data["synced_at"] is not None
 
-    # ---- boundary: values just inside the limits are accepted
+    # ---- boundary case
     @pytest.mark.parametrize("rigs", [0, 1, 500, 999, 1000])
     def test_schema_rigs_inside_limits(self, rigs):
         assert InspectionCreate(**valid_body(rigs_observed=rigs)).rigs_observed == rigs
 
-    # ---- boundary: values just outside the limits are rejected
     @pytest.mark.parametrize(
         "field, value",
         [
@@ -712,7 +709,7 @@ class TestInspectionSchema:
         with pytest.raises(ValidationError):
             InspectionCreate(**valid_body(**{field: value}))
 
-    # ---- edge: coordinates are stored with exactly 6 decimal places
+    # ---- edge case
     @pytest.mark.parametrize(
         "value, expected",
         [
@@ -725,14 +722,12 @@ class TestInspectionSchema:
     def test_schema_latitude_rounded_to_six_places(self, value, expected):
         assert str(InspectionCreate(**valid_body(latitude=value)).latitude) == expected
 
-    # ---- edge: notes length
     def test_schema_notes_exactly_at_limit(self):
         assert len(InspectionCreate(**valid_body(notes="x" * 2000)).notes) == 2000
 
     def test_schema_notes_empty_string(self):
         assert InspectionCreate(**valid_body(notes="")).notes == ""
 
-    # ---- edge: time zones are all converted to UTC
     @pytest.mark.parametrize(
         "value",
         [
@@ -748,7 +743,7 @@ class TestInspectionSchema:
         assert data.inspected_at == datetime(2026, 10, 10, 21, 0, tzinfo=timezone.utc)
         assert data.inspected_at.utcoffset() == timedelta(0)
 
-    # ---- negative: bad formats
+    # ---- negative case
     @pytest.mark.parametrize(
         "field, value",
         [
@@ -772,7 +767,6 @@ class TestInspectionSchema:
         with pytest.raises(ValidationError):
             InspectionCreate(**valid_body(**{field: value}))
 
-    # ---- negative: fields the phone is not allowed to set
     @pytest.mark.parametrize(
         "field, value",
         [
@@ -785,14 +779,12 @@ class TestInspectionSchema:
         with pytest.raises(ValidationError):
             InspectionCreate(**valid_body(**{field: value}))
 
-    # ---- positive: lenient but safe conversions
     def test_schema_rigs_as_text_number(self):
         assert InspectionCreate(**valid_body(rigs_observed="4")).rigs_observed == 4
 
     def test_schema_alert_id_explicit_null(self):
         assert InspectionCreate(**valid_body(alert_id=None)).alert_id is None
 
-    # ---- read model
     def test_schema_read_has_exact_fields(self, landing_inspection):
         data = InspectionRead.model_validate(landing_inspection).model_dump(mode="json")
 
@@ -1184,7 +1176,7 @@ class TestInspectionService:
             older.inspection_id,
         ]
 
-    # ---- positive: every type and outcome can be recorded
+    # ---- positive case
     @pytest.mark.parametrize("inspection_type", ["site", "landing_site", "zone"])
     def test_service_create_each_type(
         self, db_session, sample_officer, sample_zone, inspection_type
@@ -1227,7 +1219,7 @@ class TestInspectionService:
 
         assert result.rigs_observed == 4
 
-    # ---- boundary: phone clock allowance is 10 minutes
+    # ---- boundary case
     @pytest.mark.parametrize(
         "minutes_ahead, allowed", [(0, True), (9, True), (11, False), (60, False)]
     )
@@ -1266,7 +1258,7 @@ class TestInspectionService:
             == body.inspection_id
         )
 
-    # ---- negative: alerts and users that do not qualify
+    # ---- negative case
     def test_service_unknown_alert(self, db_session, sample_officer, sample_zone):
         body = InspectionCreate(**valid_body(sample_zone.zone_id, uuid.uuid4()))
 
@@ -1297,7 +1289,7 @@ class TestInspectionService:
 
         assert error.value.status_code == 403
 
-    # ---- positive: viewing and filtering
+    # ---- positive case
     def test_service_officer_gets_own_alert_inspection(
         self, db_session, sample_officer, sample_inspection
     ):
@@ -1366,7 +1358,6 @@ class TestInspectionService:
             == expected
         )
 
-    # ---- helpers used by create
     def test_service_officer_was_assigned_without_any_assignment(
         self, db_session, sample_alert, sample_officer
     ):
@@ -1657,7 +1648,7 @@ class TestInspectionRouter:
 
         assert len(response.json()) == expected
 
-    # ---- negative: missing fields, bad input and wrong users
+    # ---- negative case
     @pytest.mark.parametrize(
         "field",
         [

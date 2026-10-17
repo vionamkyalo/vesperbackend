@@ -16,7 +16,6 @@ from schemas.inspection import InspectionCreate
 
 logger = logging.getLogger(__name__)
 
-# How far ahead of the server clock a phone timestamp may be
 MAX_CLOCK_SKEW = timedelta(minutes=10)
 
 
@@ -33,7 +32,6 @@ class InspectionService:
         return current_user.role == UserRole.PATROL_COORDINATOR
 
     def officer_was_assigned(self, db: Session, alert_id, officer_id):
-        # Officers may report on alerts they are, or were, assigned to
         assignment = (
             db.query(AlertAssignment)
             .filter(
@@ -69,7 +67,7 @@ class InspectionService:
         return alert
 
     def mark_alert_reported(self, db: Session, current_user: User, alert):
-        # The officer's site visit is the report back on the alert
+
         now = utcnow()
         alert.assignment_status = AssignmentStatus.REPORTED
         alert.reported_at = now
@@ -104,7 +102,6 @@ class InspectionService:
                 detail="inspected_at cannot be in the future.",
             )
 
-        # The phone may send the same inspection twice after a lost connection
         existing = inspection_repository.get(db, data.inspection_id)
         if existing is not None:
             if existing.officer_id != current_user.user_id:
@@ -158,7 +155,6 @@ class InspectionService:
         self.check_active(current_user)
         inspection = inspection_repository.get(db, inspection_id)
 
-        # Officers get "not found" for other officers' records so they cannot tell which IDs exist
         if inspection is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
