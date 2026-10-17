@@ -5,5 +5,4 @@ app = FastAPI(title="Vesper", version="0.1.0")
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    """Let deployment verification confirm that the API is responding."""
     return {"status": "ok"}
