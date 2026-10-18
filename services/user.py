@@ -222,7 +222,7 @@ class UserService:
             logger.warning("Officer creation encountered a constraint conflict")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=("A user with this email or phone number already exists."),
+                detail="A user with this phone number already exists.",
             ) from error
         except SQLAlchemyError as error:
             db.rollback()
@@ -400,6 +400,56 @@ class UserService:
         self._commit(db)
 
         logger.info("Password changed for %s", current_user.user_id)
+
+    def deactivate_user(
+        self,
+        db: Session,
+        current_user: User,
+        user_id: uuid.UUID,
+    ) -> UserRead:
+
+        self.check_coordinator(current_user)
+
+        user = user_repository.get(db, user_id)
+
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User was not found.",
+            )
+
+        if user.user_id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The coordinator cannot deactivate their own account.",
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This account is already deactivated.",
+            )
+
+        user.is_active = False
+
+        self._commit(db)
+
+        try:
+            db.refresh(user)
+        except SQLAlchemyError as error:
+            db.rollback()
+            logger.exception("Failed to refresh deactivated user")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="The deactivated user could not be retrieved.",
+            ) from error
+
+        logger.info(
+            "User %s deactivated by %s",
+            user.user_id,
+            current_user.user_id,
+        )
+        return self.to_read(user)
 
 
 user_service = UserService()

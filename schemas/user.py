@@ -51,3 +51,21 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def lower_email(cls, value):
+        return value.lower()
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"

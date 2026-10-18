@@ -4,7 +4,11 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from core.security import get_current_user, require_any_user, require_coordinator
+from core.security import (
+    get_current_user,
+    require_any_user,
+    require_coordinator,
+)
 from database import get_db
 from models.user import User, UserRole
 from schemas.user import PasswordChange, UserCreate, UserRead, UserUpdate
@@ -13,7 +17,11 @@ from services.user import user_service
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_officer(
     body: UserCreate,
     db: Session = Depends(get_db),
@@ -35,11 +43,16 @@ def list_users(
 
 
 @router.get("/me", response_model=UserRead)
-def get_me(current_user: User = Depends(require_any_user)):
+def get_me(
+    current_user: User = Depends(require_any_user),
+):
     return user_service.get_me(current_user)
 
 
-@router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/me/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def change_password(
     body: PasswordChange,
     db: Session = Depends(get_db),
@@ -65,3 +78,12 @@ def update_user(
     current_user: User = Depends(require_any_user),
 ):
     return user_service.update_user(db, current_user, user_id, body)
+
+
+@router.post("/{user_id}/deactivate", response_model=UserRead)
+def deactivate_user(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_coordinator),
+):
+    return user_service.deactivate_user(db, current_user, user_id)

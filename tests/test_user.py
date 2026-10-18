@@ -675,6 +675,79 @@ class TestUserService:
 
         assert error.value.status_code == 400
 
+    def test_deactivate_user(self, db_session, sample_coordinator, sample_officer):
+        user = user_service.deactivate_user(
+            db_session, sample_coordinator, sample_officer.user_id
+        )
+
+        assert user.is_active is False
+        assert (
+            user_repository.get(db_session, sample_officer.user_id).is_active is False
+        )
+
+    def test_deactivate_user_keeps_record(
+        self, db_session, sample_coordinator, sample_officer
+    ):
+        user_service.deactivate_user(
+            db_session, sample_coordinator, sample_officer.user_id
+        )
+
+        saved = user_repository.get(db_session, sample_officer.user_id)
+
+        assert saved is not None
+        assert saved.email == sample_officer.email
+
+    def test_deactivate_user_by_officer_not_allowed(
+        self, db_session, sample_officer, second_officer
+    ):
+        with pytest.raises(HTTPException) as error:
+            user_service.deactivate_user(
+                db_session, sample_officer, second_officer.user_id
+            )
+
+        assert error.value.status_code == 403
+
+    def test_deactivate_user_not_found(self, db_session, sample_coordinator):
+        with pytest.raises(HTTPException) as error:
+            user_service.deactivate_user(db_session, sample_coordinator, uuid.uuid4())
+
+        assert error.value.status_code == 404
+
+    def test_deactivate_user_coordinator_cannot_deactivate_self(
+        self, db_session, sample_coordinator
+    ):
+        with pytest.raises(HTTPException) as error:
+            user_service.deactivate_user(
+                db_session, sample_coordinator, sample_coordinator.user_id
+            )
+
+        assert error.value.status_code == 409
+
+    def test_deactivate_user_already_inactive(
+        self, db_session, sample_coordinator, sample_officer
+    ):
+        sample_officer.is_active = False
+        db_session.commit()
+
+        with pytest.raises(HTTPException) as error:
+            user_service.deactivate_user(
+                db_session, sample_coordinator, sample_officer.user_id
+            )
+
+        assert error.value.status_code == 409
+
+    def test_deactivate_user_inactive_coordinator(
+        self, db_session, sample_coordinator, sample_officer
+    ):
+        sample_coordinator.is_active = False
+
+        with pytest.raises(HTTPException) as error:
+            user_service.deactivate_user(
+                db_session, sample_coordinator, sample_officer.user_id
+            )
+
+        assert error.value.status_code == 403
+
 
 class TestUserRouter:
     def test_create_officer(self, client, sample_coordinator):
@@ -826,3 +899,67 @@ class TestUserRouter:
         )
 
         assert response.status_code == 400
+
+    def test_deactivate_user(self, client, sample_coordinator, sample_officer):
+        response = client.post(
+            f"{API}/{sample_officer.user_id}/deactivate",
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["user_id"] == str(sample_officer.user_id)
+        assert response.json()["is_active"] is False
+
+    def test_deactivate_user_locks_out(
+        self, client, sample_coordinator, sample_officer
+    ):
+        client.post(
+            f"{API}/{sample_officer.user_id}/deactivate",
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert (
+            client.get(f"{API}/me", headers=auth_headers(sample_officer)).status_code
+            == 401
+        )
+
+    def test_deactivate_user_officer_forbidden(
+        self, client, sample_officer, second_officer
+    ):
+        response = client.post(
+            f"{API}/{second_officer.user_id}/deactivate",
+            headers=auth_headers(sample_officer),
+        )
+
+        assert response.status_code == 403
+
+    def test_deactivate_user_requires_login(self, client, sample_officer):
+        response = client.post(f"{API}/{sample_officer.user_id}/deactivate")
+
+        assert response.status_code == 401
+
+    def test_deactivate_user_not_found(self, client, sample_coordinator):
+        response = client.post(
+            f"{API}/{uuid.uuid4()}/deactivate",
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert response.status_code == 404
+
+    def test_deactivate_user_twice(self, client, sample_coordinator, sample_officer):
+        url = f"{API}/{sample_officer.user_id}/deactivate"
+        client.post(url, headers=auth_headers(sample_coordinator))
+
+        response = client.post(url, headers=auth_headers(sample_coordinator))
+
+        assert response.status_code == 409
+
+    def test_delete_user_not_available(
+        self, client, sample_coordinator, sample_officer
+    ):
+        response = client.delete(
+            f"{API}/{sample_officer.user_id}",
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert response.status_code == 405
