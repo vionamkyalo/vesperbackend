@@ -31,8 +31,7 @@ class ZoneService:
 
         if current_user.role != UserRole.PATROL_COORDINATOR:
             logger.warning(
-                "zone action refused: user %s is not the coordinator",
-                current_user.user_id,
+                f"zone action refused: user {current_user.user_id} is not the coordinator"
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -129,7 +128,7 @@ class ZoneService:
         db.commit()
         db.refresh(zone)
 
-        logger.info("zone %s created by %s", zone.zone_id, current_user.user_id)
+        logger.info(f"zone {zone.zone_id} created by {current_user.user_id}")
         return zone
 
     def update_zone(
@@ -166,10 +165,7 @@ class ZoneService:
         zone = zone_repository.update(db, zone)
 
         logger.info(
-            "zone %s updated by %s: %s",
-            zone.zone_id,
-            current_user.user_id,
-            sorted(changes),
+            f"zone {zone.zone_id} updated by {current_user.user_id}: {sorted(changes)}"
         )
         return zone
 
@@ -190,9 +186,7 @@ class ZoneService:
         zone = zone_repository.update(db, zone)
 
         logger.info(
-            "zone %s detection settings changed by %s",
-            zone.zone_id,
-            current_user.user_id,
+            f"zone {zone.zone_id} detection settings changed by {current_user.user_id}"
         )
         return zone
 
@@ -204,7 +198,7 @@ class ZoneService:
         zone.rules_confirmed_at = utcnow()
         zone = zone_repository.update(db, zone)
 
-        logger.info("zone %s rules confirmed by %s", zone.zone_id, current_user.user_id)
+        logger.info(f"zone {zone.zone_id} rules confirmed by {current_user.user_id}")
         return zone
 
 
