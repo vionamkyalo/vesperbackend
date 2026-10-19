@@ -73,5 +73,18 @@ def enum_type(enum_class, name):
 
 
 def init_db():
+    from models import (  # noqa: F401
+        alert,
+        alert_assignment,
+        catch_check,
+        inspection,
+        officer_location,
+        user,
+        violation_report,
+        zone,
+        zone_baseline,
+        zone_light_reading,
+        zone_setting_history,
+    )
 
     Base.metadata.create_all(bind=engine)
