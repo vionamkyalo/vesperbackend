@@ -11,6 +11,7 @@ from models.violation_report import ReviewStatus, ViolationReport
 from repositories.violation_report import violation_report_repository
 from schemas.violation_report import ViolationReportCreate
 
+
 logger = logging.getLogger(__name__)
 
 MAX_CLOCK_SKEW = timedelta(minutes=10)
@@ -42,7 +43,10 @@ class ViolationReportService:
             )
 
     def create_report(
-        self, db: Session, current_user: User, data: ViolationReportCreate
+        self,
+        db: Session,
+        current_user: User,
+        data: ViolationReportCreate,
     ):
         self.check_active(current_user)
 
@@ -58,7 +62,11 @@ class ViolationReportService:
                 detail="recorded_at cannot be in the future.",
             )
 
-        existing = violation_report_repository.get(db, data.violation_id)
+        existing = violation_report_repository.get(
+            db,
+            data.violation_id,
+        )
+
         if existing is not None:
             if (
                 existing.inspection_id != data.inspection_id
@@ -71,11 +79,17 @@ class ViolationReportService:
                 )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="A different violation report already uses this violation_id.",
+                    detail=(
+                        "A different violation report already uses this violation_id."
+                    ),
                 )
+
             return existing
 
-        inspection = violation_report_repository.get_inspection(db, data.inspection_id)
+        inspection = violation_report_repository.get_inspection(
+            db,
+            data.inspection_id,
+        )
 
         if inspection is None:
             logger.warning(
@@ -108,6 +122,7 @@ class ViolationReportService:
             description=data.description,
             recorded_at=data.recorded_at,
         )
+
         report = violation_report_repository.create(db, report)
 
         logger.info(
@@ -115,10 +130,17 @@ class ViolationReportService:
             report.violation_id,
             current_user.user_id,
         )
+
         return report
 
-    def get_report(self, db: Session, current_user: User, violation_id: uuid.UUID):
+    def get_report(
+        self,
+        db: Session,
+        current_user: User,
+        violation_id: uuid.UUID,
+    ):
         self.check_active(current_user)
+
         report = violation_report_repository.get(db, violation_id)
 
         if report is None:
@@ -150,15 +172,27 @@ class ViolationReportService:
         self.check_active(current_user)
 
         officer_id = None
+
         if not self.is_coordinator(current_user):
             officer_id = current_user.user_id
 
         return violation_report_repository.list_reports(
-            db, review_status, officer_id, inspection_id, limit, offset
+            db,
+            review_status,
+            officer_id,
+            inspection_id,
+            limit,
+            offset,
         )
 
-    def review_report(self, db: Session, current_user: User, violation_id: uuid.UUID):
+    def review_report(
+        self,
+        db: Session,
+        current_user: User,
+        violation_id: uuid.UUID,
+    ):
         self.check_coordinator(current_user)
+
         report = self.get_report(db, current_user, violation_id)
 
         if report.review_status != ReviewStatus.SUBMITTED:
@@ -170,6 +204,7 @@ class ViolationReportService:
         report.review_status = ReviewStatus.REVIEWED
         report.reviewed_by = current_user.user_id
         report.reviewed_at = utcnow()
+
         db.commit()
         db.refresh(report)
 
@@ -178,7 +213,30 @@ class ViolationReportService:
             report.violation_id,
             current_user.user_id,
         )
+
         return report
+
+    def delete_report(
+        self,
+        db: Session,
+        current_user: User,
+        violation_id: uuid.UUID,
+    ):
+        self.check_coordinator(current_user)
+
+        report = self.get_report(
+            db,
+            current_user,
+            violation_id,
+        )
+
+        violation_report_repository.delete(db, report)
+
+        logger.info(
+            "violation report %s deleted by %s",
+            violation_id,
+            current_user.user_id,
+        )
 
 
 violation_report_service = ViolationReportService()

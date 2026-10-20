@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from core.security import (
@@ -11,7 +11,7 @@ from core.security import (
 )
 from database import get_db
 from models.user import User
-from models.violation_report import ReviewStatus, ViolationReport
+from models.violation_report import ReviewStatus
 from schemas.violation_report import (
     ViolationReportCreate,
     ViolationReportRead,
@@ -102,18 +102,10 @@ def delete_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    report = (
-        db.query(ViolationReport)
-        .filter(ViolationReport.violation_id == violation_id)
-        .first()
+    violation_report_service.delete_report(
+        db,
+        current_user,
+        violation_id,
     )
 
-    if not report:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Violation report with ID {violation_id} not found.",
-        )
-
-    db.delete(report)
-    db.commit()
     return None

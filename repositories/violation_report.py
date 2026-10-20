@@ -11,6 +11,10 @@ class ViolationReportRepository:
         db.refresh(report)
         return report
 
+    def delete(self, db: Session, report: ViolationReport):
+        db.delete(report)
+        db.commit()
+
     def get(self, db: Session, violation_id):
         return (
             db.query(ViolationReport)
@@ -41,8 +45,10 @@ class ViolationReportRepository:
 
         if review_status is not None:
             query = query.filter(ViolationReport.review_status == review_status)
+
         if officer_id is not None:
             query = query.join(Inspection).filter(Inspection.officer_id == officer_id)
+
         if inspection_id is not None:
             query = query.filter(ViolationReport.inspection_id == inspection_id)
 
