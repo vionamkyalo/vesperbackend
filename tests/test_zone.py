@@ -334,6 +334,16 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+
+    if not REAL_SECURITY:
+        # main.py may have imported the router before this file patched
+        # core.security, so swap the stand-ins in the same way dev_zone_server.py does.
+        app.dependency_overrides[zone_router.require_coordinator] = (
+            security.require_coordinator
+        )
+        app.dependency_overrides[zone_router.require_any_user] = (
+            security.require_any_user
+        )
     with TestClient(app) as test_client:
         yield test_client
 

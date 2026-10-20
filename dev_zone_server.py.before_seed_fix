@@ -1,0 +1,333 @@
+import os
+
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+os.environ.setdefault("JWT_SECRET_KEY", "local-postman-only-secret-key-1234567890")
+
+import uuid
+from decimal import Decimal
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # ADDED
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+
+import models.alert
+import models.alert_assignment
+import models.catch_check
+import models.inspection
+import models.officer_location
+import models.violation_report
+import models.zone_baseline
+import models.zone_light_reading
+import models.zone_setting_history
+from core import security
+from database import Base, get_db
+from models.user import User, UserRole
+from models.zone import Zone, ZoneType
+
+engine = create_engine("sqlite:///postman_zone.db", connect_args={"check_same_thread": False})
+
+
+@event.listens_for(engine, "connect")
+def enable_foreign_keys(dbapi_connection, _record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def local_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def stand_in_role_check(*roles):
+    # CHANGED: reads the X-Test-User header, which is what the frontend and Postman send
+    def checker(x_test_user: str | None = Header(default=None), db: Session = Depends(local_db)):
+        if x_test_user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            user = db.get(User, uuid.UUID(x_test_user))
+        except ValueError:
+            user = None
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        if user.role not in roles:
+            raise HTTPException(status_code=403, detail="You do not have permission to do this.")
+        return user
+
+    return checker
+
+
+coordinator_only = stand_in_role_check(UserRole.PATROL_COORDINATOR)
+any_user = stand_in_role_check(UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFFICER)
+
+for name, checker in [
+    ("require_coordinator", coordinator_only),
+    ("require_any_user", any_user),
+]:
+    if not hasattr(security, name):
+        setattr(security, name, checker)
+
+from routers import zone as zone_router
+
+PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$bm90cmVhbA$bm90cmVhbA"
+ZONE_POLYGON = {
+    "type": "Polygon",
+    "coordinates": [[[28.00, -16.90], [28.10, -16.90], [28.10, -16.80], [28.00, -16.80], [28.00, -16.90]]],
+}
+IDS = {}
+
+
+def make_user(db, role, email, phone, first_name, last_name):
+    user = User(
+        first_name=first_name,
+        last_name=last_name,
+        phone_number=phone,
+        email=email,
+        password_hash=PASSWORD_HASH,
+        role=role,
+    )
+    db.add(user)
+    db.flush()
+    return user
+
+
+def seed():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    db = SessionLocal()
+
+    coordinator = make_user(db, UserRole.PATROL_COORDINATOR, "rudo@example.org", "+263771000001", "Rudo", "Chikwanha")
+    officer = make_user(db, UserRole.PATROL_OFFICER, "tendai@example.org", "+263771000002", "Tendai", "Moyo")
+
+    zone = Zone(
+        name="Sanyati Basin East",
+        basin="Sanyati",
+        zone_type=ZoneType.FISHING_ZONE,
+        boundary=ZONE_POLYGON,
+        radiance_threshold=Decimal("10.0000"),
+        cluster_radius_m=Decimal("1500.00"),
+        updated_by=coordinator.user_id,
+    )
+    db.add(zone)
+    db.commit()
+
+    IDS.update(
+        {
+            "coordinator_id": str(coordinator.user_id),
+            "officer_id": str(officer.user_id),
+            "zone_id": str(zone.zone_id),
+        }
+    )
+    db.close()
+    print("\nPostman sample data ready:")
+    for key, value in IDS.items():
+        print(f"  {key}: {value}")
+
+
+seed()
+
+app = FastAPI(title="Insyte zones - local Postman testing")
+
+# ADDED: lets the Next.js site on port 3000 call this server from the browser
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# CHANGED: "/vesper" only; the router already adds "/zones"
+app.include_router(zone_router.router, prefix="/vesper", tags=["zones"])
+app.dependency_overrides[get_db] = local_db
+app.dependency_overrides[zone_router.require_coordinator] = coordinator_only
+app.dependency_overrides[zone_router.require_any_user] = any_user
+
+
+@app.get("/dev/ids")
+def sample_ids():
+    return IDS
+
+
+# Local development endpoints used by the Vesper frontend.
+# For local testing only.
+
+@app.get("/vesper/users")
+def list_users(
+    role: str | None = None,
+    is_active: bool | None = None,
+    limit: int = 200,
+    db: Session = Depends(local_db),
+    _user=Depends(any_user),
+):
+    query = db.query(User)
+    if role:
+        query = query.filter(User.role == role)
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+
+    users = query.limit(max(1, min(limit, 500))).all()
+    return [
+        {
+            "user_id": str(u.user_id),
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "full_name": f"{u.first_name} {u.last_name}",
+            "phone_number": u.phone_number,
+            "email": u.email,
+            "role": u.role.value,
+            "is_active": u.is_active,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "updated_at": u.updated_at.isoformat() if u.updated_at else None,
+        }
+        for u in users
+    ]
+
+
+@app.get("/vesper/alert-assignments")
+def list_alert_assignments(
+    limit: int = 200,
+    db: Session = Depends(local_db),
+    _user=Depends(any_user),
+):
+    from models.alert_assignment import AlertAssignment
+
+    items = (
+        db.query(AlertAssignment)
+        .order_by(AlertAssignment.assigned_at.desc())
+        .limit(max(1, min(limit, 500)))
+        .all()
+    )
+    return [
+        {
+            "assignment_id": str(a.assignment_id),
+            "alert_id": str(a.alert_id),
+            "officer_id": str(a.officer_id),
+            "assigned_by": str(a.assigned_by),
+            "status": a.status.value,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "acknowledged_at": a.acknowledged_at.isoformat() if a.acknowledged_at else None,
+            "reported_at": a.reported_at.isoformat() if a.reported_at else None,
+            "ended_at": a.ended_at.isoformat() if a.ended_at else None,
+        }
+        for a in items
+    ]
+
+
+@app.get("/vesper/inspections")
+def list_inspections(
+    limit: int = 200,
+    db: Session = Depends(local_db),
+    _user=Depends(any_user),
+):
+    from models.inspection import Inspection
+
+    items = (
+        db.query(Inspection)
+        .order_by(Inspection.inspected_at.desc())
+        .limit(max(1, min(limit, 500)))
+        .all()
+    )
+    return [
+        {
+            "inspection_id": str(i.inspection_id),
+            "alert_id": str(i.alert_id) if i.alert_id else None,
+            "officer_id": str(i.officer_id),
+            "zone_id": str(i.zone_id),
+            "inspection_type": i.inspection_type.value,
+            "outcome": i.outcome.value,
+            "rigs_observed": i.rigs_observed,
+            "latitude": float(i.latitude),
+            "longitude": float(i.longitude),
+            "notes": i.notes,
+            "inspected_at": i.inspected_at.isoformat() if i.inspected_at else None,
+            "synced_at": i.synced_at.isoformat() if i.synced_at else None,
+        }
+        for i in items
+    ]
+
+@app.get("/vesper/users")
+def list_users(
+    role: str | None = None,
+    is_active: bool | None = None,
+    limit: int = 200,
+    db: Session = Depends(local_db),
+    _user=Depends(any_user),
+):
+    query = db.query(User)
+    if role:
+        query = query.filter(User.role == role)
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+    return [
+        {
+            "user_id": str(u.user_id),
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "full_name": f"{u.first_name} {u.last_name}",
+            "phone_number": u.phone_number,
+            "email": u.email,
+            "role": u.role.value,
+            "is_active": u.is_active,
+        }
+        for u in query.limit(max(1, min(limit, 500))).all()
+    ]
+
+
+@app.get("/vesper/alert-assignments")
+def list_alert_assignments(
+    limit: int = 200,
+    db: Session = Depends(local_db),
+    _user=Depends(any_user),
+):
+    from models.alert_assignment import AlertAssignment
+
+    items = db.query(AlertAssignment).limit(max(1, min(limit, 500))).all()
+    return [
+        {
+            "assignment_id": str(a.assignment_id),
+            "alert_id": str(a.alert_id),
+            "officer_id": str(a.officer_id),
+            "assigned_by": str(a.assigned_by),
+            "status": a.status.value,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "acknowledged_at": a.acknowledged_at.isoformat() if a.acknowledged_at else None,
+            "reported_at": a.reported_at.isoformat() if a.reported_at else None,
+            "ended_at": a.ended_at.isoformat() if a.ended_at else None,
+        }
+        for a in items
+    ]
+
+
+@app.get("/vesper/inspections")
+def list_inspections(
+    limit: int = 200,
+    db: Session = Depends(local_db),
+    _user=Depends(any_user),
+):
+    from models.inspection import Inspection
+
+    items = db.query(Inspection).limit(max(1, min(limit, 500))).all()
+    return [
+        {
+            "inspection_id": str(i.inspection_id),
+            "alert_id": str(i.alert_id) if i.alert_id else None,
+            "officer_id": str(i.officer_id),
+            "zone_id": str(i.zone_id),
+            "inspection_type": i.inspection_type.value,
+            "outcome": i.outcome.value,
+            "rigs_observed": i.rigs_observed,
+            "latitude": float(i.latitude),
+            "longitude": float(i.longitude),
+            "notes": i.notes,
+            "inspected_at": i.inspected_at.isoformat() if i.inspected_at else None,
+            "synced_at": i.synced_at.isoformat() if i.synced_at else None,
+        }
+        for i in items
+    ]

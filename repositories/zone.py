@@ -6,7 +6,7 @@ from models.zone import Zone
 class ZoneRepository:
     def create(self, db: Session, zone: Zone):
         db.add(zone)
-        db.commit()
+        db.flush()
         db.refresh(zone)
         return zone
 

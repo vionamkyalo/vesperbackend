@@ -4,9 +4,9 @@ from typing import List
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from core.security import require_any_user, require_coordinator
 from database import get_db
 from models.user import User
+from routers.dependencies import require_any_user, require_coordinator
 from schemas.zone import (
     ZoneCreate,
     ZoneRead,
