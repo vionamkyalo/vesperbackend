@@ -23,11 +23,15 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./vesper.db"
     create_tables_on_startup: bool = False
 
-    jwt_secret_key: str = Field(min_length=32, repr=False)
+    jwt_secret_key: str = Field(
+    min_length=32,
+    repr=False,
+    validation_alias="JWT_SECRET",
+)
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_issuer: str = "vesper-api"
     jwt_audience: str = "vesper-clients"
-    access_token_ttl_minutes: int = Field(default=15, ge=1, le=60)
+    access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
     cors_allowed_origins: List[str] = ["http://localhost:3000"]
