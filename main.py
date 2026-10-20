@@ -1,18 +1,12 @@
+import os
+
 from fastapi import FastAPI
 
 from database import init_db
 from models import (  # noqa: F401
-    alert,
-    alert_assignment,
-    catch_check,
-    inspection,
-    officer_location,
     user,
     violation_report,
     zone,
-    zone_baseline,
-    zone_light_reading,
-    zone_setting_history,
 )
 from routers.violation_report import router as violation_report_router
 
