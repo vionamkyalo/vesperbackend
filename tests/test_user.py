@@ -876,7 +876,7 @@ class TestUserRouter:
         sample_officer.password_hash = hash_password("Old-Password-2026")
         db_session.commit()
 
-        response = client.post(
+        response = client.patch(
             f"{API}/me/password",
             json={
                 "current_password": "Old-Password-2026",
@@ -885,11 +885,12 @@ class TestUserRouter:
             headers=auth_headers(sample_officer),
         )
 
-        assert response.status_code == 204
+        assert response.status_code == 200
+        assert response.json() == {"message": "Password changed successfully"}
         assert verify_password(STRONG_PASSWORD, sample_officer.password_hash)
 
     def test_change_password_wrong_current(self, client, sample_officer):
-        response = client.post(
+        response = client.patch(
             f"{API}/me/password",
             json={
                 "current_password": "Wrong-Password-1",
