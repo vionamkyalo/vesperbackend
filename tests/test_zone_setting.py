@@ -1,14 +1,14 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
- 
+
 import pytest
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
- 
+
 from core import security
 from database import get_db
 from models.user import User, UserRole
@@ -17,8 +17,6 @@ from models.zone_setting_history import ZoneSettingHistory
 from repositories.zone_setting_history import zone_setting_history_repository
 from schemas.zone_setting_history import ZoneSettingHistoryRead
 from services.zone_setting_history import zone_setting_history_service
-
-
 
 
 class TestZoneSettingHistory:
@@ -137,8 +135,7 @@ class TestZoneSettingHistory:
         db_session.refresh(history)
 
         assert history.changer.user_id == sample_coordinator.user_id
-        
-        
+
 
 HISTORY_API = "/api/v1/zone-setting-history"
 
@@ -151,7 +148,8 @@ def make_history(db_session, zone, user, minutes_ago=0, **changes):
         "min_cluster_points": 3,
         "confidence_threshold": Decimal("0.4000"),
         "changed_by": user.user_id,
-        "changed_at": datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc) - timedelta(minutes=minutes_ago),
+        "changed_at": datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)
+        - timedelta(minutes=minutes_ago),
     }
     values.update(changes)
     history = ZoneSettingHistory(**values)
@@ -176,25 +174,35 @@ def make_other_zone(db_session, name="History Other Zone"):
 
 
 def history_stand_in_role_check(*roles):
-    def checker(x_test_user: str | None = Header(default=None), db: Session = Depends(get_db)):
+    def checker(
+        x_test_user: str | None = Header(default=None), db: Session = Depends(get_db)
+    ):
         if x_test_user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
         user = db.get(User, uuid.UUID(x_test_user))
         if user is None or not user.is_active:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         if user.role not in roles:
-            raise HTTPException(status_code=403, detail="You do not have permission to do this.")
+            raise HTTPException(
+                status_code=403, detail="You do not have permission to do this."
+            )
         return user
 
     return checker
 
 
-HISTORY_REAL_SECURITY = hasattr(security, "create_access_token") and hasattr(security, "require_any_user")
+HISTORY_REAL_SECURITY = hasattr(security, "create_access_token") and hasattr(
+    security, "require_any_user"
+)
 
 if not HISTORY_REAL_SECURITY:
-    security.require_coordinator = history_stand_in_role_check(UserRole.PATROL_COORDINATOR)
+    security.require_coordinator = history_stand_in_role_check(
+        UserRole.PATROL_COORDINATOR
+    )
     security.require_officer = history_stand_in_role_check(UserRole.PATROL_OFFICER)
-    security.require_any_user = history_stand_in_role_check(UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFFICER)
+    security.require_any_user = history_stand_in_role_check(
+        UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFFICER
+    )
 
 
 def history_headers(user):
@@ -243,7 +251,9 @@ class TestZoneSettingHistoryRepository:
         assert found.confidence_threshold == Decimal("0.4000")
         assert found.changed_by == sample_coordinator.user_id
 
-    def test_create_fills_id_and_time(self, db_session, sample_zone, sample_coordinator):
+    def test_create_fills_id_and_time(
+        self, db_session, sample_zone, sample_coordinator
+    ):
         history = ZoneSettingHistory(
             zone_id=sample_zone.zone_id,
             radiance_threshold=Decimal("1"),
@@ -258,7 +268,9 @@ class TestZoneSettingHistoryRepository:
         assert isinstance(saved.history_id, uuid.UUID)
         assert saved.changed_at is not None
 
-    def test_create_returns_same_object(self, db_session, sample_zone, sample_coordinator):
+    def test_create_returns_same_object(
+        self, db_session, sample_zone, sample_coordinator
+    ):
         history = ZoneSettingHistory(
             zone_id=sample_zone.zone_id,
             radiance_threshold=Decimal("1"),
@@ -273,7 +285,12 @@ class TestZoneSettingHistoryRepository:
     def test_get_found(self, db_session, sample_zone, sample_coordinator):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
-        assert zone_setting_history_repository.get(db_session, history.history_id).history_id == history.history_id
+        assert (
+            zone_setting_history_repository.get(
+                db_session, history.history_id
+            ).history_id
+            == history.history_id
+        )
 
     def test_get_unknown_id(self, db_session):
         assert zone_setting_history_repository.get(db_session, uuid.uuid4()) is None
@@ -284,7 +301,9 @@ class TestZoneSettingHistoryRepository:
     @pytest.mark.parametrize("count", [1, 3, 5])
     def test_get_all_counts(self, db_session, sample_zone, sample_coordinator, count):
         for minutes in range(count):
-            make_history(db_session, sample_zone, sample_coordinator, minutes_ago=minutes)
+            make_history(
+                db_session, sample_zone, sample_coordinator, minutes_ago=minutes
+            )
 
         assert len(zone_setting_history_repository.get_all(db_session)) == count
 
@@ -293,7 +312,10 @@ class TestZoneSettingHistoryRepository:
         make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, other_zone, sample_coordinator)
 
-        zones = {history.zone_id for history in zone_setting_history_repository.get_all(db_session)}
+        zones = {
+            history.zone_id
+            for history in zone_setting_history_repository.get_all(db_session)
+        }
 
         assert zones == {sample_zone.zone_id, other_zone.zone_id}
 
@@ -308,7 +330,9 @@ class TestZoneSettingHistoryRepository:
             "changed_by",
         ],
     )
-    def test_create_required_field_missing(self, db_session, sample_zone, sample_coordinator, field):
+    def test_create_required_field_missing(
+        self, db_session, sample_zone, sample_coordinator, field
+    ):
         values = {
             "zone_id": sample_zone.zone_id,
             "radiance_threshold": Decimal("1"),
@@ -320,12 +344,16 @@ class TestZoneSettingHistoryRepository:
         values[field] = None
 
         with pytest.raises(IntegrityError):
-            zone_setting_history_repository.create(db_session, ZoneSettingHistory(**values))
+            zone_setting_history_repository.create(
+                db_session, ZoneSettingHistory(**values)
+            )
 
         db_session.rollback()
 
     @pytest.mark.parametrize("missing_link", ["zone_id", "changed_by"])
-    def test_create_unknown_link_rejected(self, db_session, sample_zone, sample_coordinator, missing_link):
+    def test_create_unknown_link_rejected(
+        self, db_session, sample_zone, sample_coordinator, missing_link
+    ):
         values = {
             "zone_id": sample_zone.zone_id,
             "radiance_threshold": Decimal("1"),
@@ -337,11 +365,15 @@ class TestZoneSettingHistoryRepository:
         values[missing_link] = uuid.uuid4()
 
         with pytest.raises(IntegrityError):
-            zone_setting_history_repository.create(db_session, ZoneSettingHistory(**values))
+            zone_setting_history_repository.create(
+                db_session, ZoneSettingHistory(**values)
+            )
 
         db_session.rollback()
 
-    def test_create_duplicate_id_rejected(self, db_session, sample_zone, sample_coordinator):
+    def test_create_duplicate_id_rejected(
+        self, db_session, sample_zone, sample_coordinator
+    ):
         first = make_history(db_session, sample_zone, sample_coordinator)
         db_session.expunge_all()
         copy = ZoneSettingHistory(
@@ -369,11 +401,21 @@ class TestZoneSettingHistoryRepository:
             ("confidence_threshold", Decimal("0.0001")),
         ],
     )
-    def test_create_keeps_decimal_values(self, db_session, sample_zone, sample_coordinator, field, value):
-        history = make_history(db_session, sample_zone, sample_coordinator, **{field: value})
+    def test_create_keeps_decimal_values(
+        self, db_session, sample_zone, sample_coordinator, field, value
+    ):
+        history = make_history(
+            db_session, sample_zone, sample_coordinator, **{field: value}
+        )
         db_session.expire_all()
 
-        assert getattr(zone_setting_history_repository.get(db_session, history.history_id), field) == value
+        assert (
+            getattr(
+                zone_setting_history_repository.get(db_session, history.history_id),
+                field,
+            )
+            == value
+        )
 
     def test_repository_has_no_update(self):
         assert not hasattr(zone_setting_history_repository, "update")
@@ -408,9 +450,15 @@ class TestZoneSettingHistorySchema:
 
     @pytest.mark.parametrize(
         "field, expected",
-        [("radiance_threshold", 12.5), ("cluster_radius_m", 1000.0), ("confidence_threshold", 0.4)],
+        [
+            ("radiance_threshold", 12.5),
+            ("cluster_radius_m", 1000.0),
+            ("confidence_threshold", 0.4),
+        ],
     )
-    def test_read_decimals_sent_as_numbers(self, db_session, sample_zone, sample_coordinator, field, expected):
+    def test_read_decimals_sent_as_numbers(
+        self, db_session, sample_zone, sample_coordinator, field, expected
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
         data = ZoneSettingHistoryRead.model_validate(history).model_dump(mode="json")
@@ -502,43 +550,69 @@ class TestZoneSettingHistoryService:
         make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, sample_zone, sample_coordinator, minutes_ago=5)
 
-        assert len(zone_setting_history_service.list_history(db_session, sample_coordinator)) == 2
+        assert (
+            len(
+                zone_setting_history_service.list_history(
+                    db_session, sample_coordinator
+                )
+            )
+            == 2
+        )
 
     def test_list_empty(self, db_session, sample_coordinator):
-        assert zone_setting_history_service.list_history(db_session, sample_coordinator) == []
+        assert (
+            zone_setting_history_service.list_history(db_session, sample_coordinator)
+            == []
+        )
 
     def test_list_newest_first(self, db_session, sample_zone, sample_coordinator):
         old = make_history(db_session, sample_zone, sample_coordinator, minutes_ago=60)
         new = make_history(db_session, sample_zone, sample_coordinator, minutes_ago=1)
 
-        results = zone_setting_history_service.list_history(db_session, sample_coordinator)
+        results = zone_setting_history_service.list_history(
+            db_session, sample_coordinator
+        )
 
-        assert [history.history_id for history in results] == [new.history_id, old.history_id]
+        assert [history.history_id for history in results] == [
+            new.history_id,
+            old.history_id,
+        ]
 
     def test_list_filter_by_zone(self, db_session, sample_zone, sample_coordinator):
         other_zone = make_other_zone(db_session)
         mine = make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, other_zone, sample_coordinator)
 
-        results = zone_setting_history_service.list_history(db_session, sample_coordinator, zone_id=sample_zone.zone_id)
+        results = zone_setting_history_service.list_history(
+            db_session, sample_coordinator, zone_id=sample_zone.zone_id
+        )
 
         assert [history.history_id for history in results] == [mine.history_id]
 
-    def test_list_zone_without_history(self, db_session, sample_zone, sample_coordinator):
+    def test_list_zone_without_history(
+        self, db_session, sample_zone, sample_coordinator
+    ):
         other_zone = make_other_zone(db_session)
         make_history(db_session, sample_zone, sample_coordinator)
 
         assert (
-            zone_setting_history_service.list_history(db_session, sample_coordinator, zone_id=other_zone.zone_id) == []
+            zone_setting_history_service.list_history(
+                db_session, sample_coordinator, zone_id=other_zone.zone_id
+            )
+            == []
         )
 
     def test_list_unknown_zone(self, db_session, sample_coordinator):
         with pytest.raises(HTTPException) as error:
-            zone_setting_history_service.list_history(db_session, sample_coordinator, zone_id=uuid.uuid4())
+            zone_setting_history_service.list_history(
+                db_session, sample_coordinator, zone_id=uuid.uuid4()
+            )
 
         assert error.value.status_code == 404
 
-    def test_list_filter_by_changed_by(self, db_session, sample_zone, sample_coordinator, sample_officer):
+    def test_list_filter_by_changed_by(
+        self, db_session, sample_zone, sample_coordinator, sample_officer
+    ):
         mine = make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, sample_zone, sample_officer)
 
@@ -548,29 +622,50 @@ class TestZoneSettingHistoryService:
 
         assert [history.history_id for history in results] == [mine.history_id]
 
-    def test_list_filter_by_unknown_person(self, db_session, sample_zone, sample_coordinator):
+    def test_list_filter_by_unknown_person(
+        self, db_session, sample_zone, sample_coordinator
+    ):
         make_history(db_session, sample_zone, sample_coordinator)
 
-        assert zone_setting_history_service.list_history(db_session, sample_coordinator, changed_by=uuid.uuid4()) == []
+        assert (
+            zone_setting_history_service.list_history(
+                db_session, sample_coordinator, changed_by=uuid.uuid4()
+            )
+            == []
+        )
 
-    def test_list_zone_and_person_together(self, db_session, sample_zone, sample_coordinator, sample_officer):
+    def test_list_zone_and_person_together(
+        self, db_session, sample_zone, sample_coordinator, sample_officer
+    ):
         other_zone = make_other_zone(db_session)
         wanted = make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, sample_zone, sample_officer)
         make_history(db_session, other_zone, sample_coordinator)
 
         results = zone_setting_history_service.list_history(
-            db_session, sample_coordinator, zone_id=sample_zone.zone_id, changed_by=sample_coordinator.user_id
+            db_session,
+            sample_coordinator,
+            zone_id=sample_zone.zone_id,
+            changed_by=sample_coordinator.user_id,
         )
 
         assert [history.history_id for history in results] == [wanted.history_id]
 
-    @pytest.mark.parametrize("limit, offset, expected", [(1, 0, 1), (2, 0, 2), (50, 0, 3), (2, 2, 1), (10, 3, 0)])
-    def test_list_paging(self, db_session, sample_zone, sample_coordinator, limit, offset, expected):
+    @pytest.mark.parametrize(
+        "limit, offset, expected",
+        [(1, 0, 1), (2, 0, 2), (50, 0, 3), (2, 2, 1), (10, 3, 0)],
+    )
+    def test_list_paging(
+        self, db_session, sample_zone, sample_coordinator, limit, offset, expected
+    ):
         for minutes in range(3):
-            make_history(db_session, sample_zone, sample_coordinator, minutes_ago=minutes)
+            make_history(
+                db_session, sample_zone, sample_coordinator, minutes_ago=minutes
+            )
 
-        results = zone_setting_history_service.list_history(db_session, sample_coordinator, limit=limit, offset=offset)
+        results = zone_setting_history_service.list_history(
+            db_session, sample_coordinator, limit=limit, offset=offset
+        )
 
         assert len(results) == expected
 
@@ -597,30 +692,42 @@ class TestZoneSettingHistoryService:
     def test_get_found(self, db_session, sample_zone, sample_coordinator):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
-        result = zone_setting_history_service.get_history(db_session, sample_coordinator, history.history_id)
+        result = zone_setting_history_service.get_history(
+            db_session, sample_coordinator, history.history_id
+        )
 
         assert result.history_id == history.history_id
 
     def test_get_not_found(self, db_session, sample_coordinator):
         with pytest.raises(HTTPException) as error:
-            zone_setting_history_service.get_history(db_session, sample_coordinator, uuid.uuid4())
+            zone_setting_history_service.get_history(
+                db_session, sample_coordinator, uuid.uuid4()
+            )
 
         assert error.value.status_code == 404
 
-    def test_get_officer_refused(self, db_session, sample_zone, sample_coordinator, sample_officer):
+    def test_get_officer_refused(
+        self, db_session, sample_zone, sample_coordinator, sample_officer
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
         with pytest.raises(HTTPException) as error:
-            zone_setting_history_service.get_history(db_session, sample_officer, history.history_id)
+            zone_setting_history_service.get_history(
+                db_session, sample_officer, history.history_id
+            )
 
         assert error.value.status_code == 403
 
-    def test_get_inactive_coordinator_refused(self, db_session, sample_zone, sample_coordinator):
+    def test_get_inactive_coordinator_refused(
+        self, db_session, sample_zone, sample_coordinator
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
         sample_coordinator.is_active = False
 
         with pytest.raises(HTTPException) as error:
-            zone_setting_history_service.get_history(db_session, sample_coordinator, history.history_id)
+            zone_setting_history_service.get_history(
+                db_session, sample_coordinator, history.history_id
+            )
 
         assert error.value.status_code == 403
 
@@ -633,30 +740,44 @@ class TestZoneSettingHistoryService:
     def test_officer_refused_before_not_found(self, db_session, sample_officer):
         # An officer must not learn whether an ID exists
         with pytest.raises(HTTPException) as error:
-            zone_setting_history_service.get_history(db_session, sample_officer, uuid.uuid4())
+            zone_setting_history_service.get_history(
+                db_session, sample_officer, uuid.uuid4()
+            )
 
         assert error.value.status_code == 403
 
 
 class TestZoneSettingHistoryRouter:
-    def test_list_as_coordinator(self, history_client, db_session, sample_zone, sample_coordinator):
+    def test_list_as_coordinator(
+        self, history_client, db_session, sample_zone, sample_coordinator
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
-        response = history_client.get(HISTORY_API, headers=history_headers(sample_coordinator))
+        response = history_client.get(
+            HISTORY_API, headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 200
-        assert [item["history_id"] for item in response.json()] == [str(history.history_id)]
+        assert [item["history_id"] for item in response.json()] == [
+            str(history.history_id)
+        ]
 
     def test_list_empty(self, history_client, sample_coordinator):
-        response = history_client.get(HISTORY_API, headers=history_headers(sample_coordinator))
+        response = history_client.get(
+            HISTORY_API, headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_list_response_fields(self, history_client, db_session, sample_zone, sample_coordinator):
+    def test_list_response_fields(
+        self, history_client, db_session, sample_zone, sample_coordinator
+    ):
         make_history(db_session, sample_zone, sample_coordinator)
 
-        item = history_client.get(HISTORY_API, headers=history_headers(sample_coordinator)).json()[0]
+        item = history_client.get(
+            HISTORY_API, headers=history_headers(sample_coordinator)
+        ).json()[0]
 
         assert item["radiance_threshold"] == 12.5
         assert item["cluster_radius_m"] == 1000.0
@@ -664,19 +785,30 @@ class TestZoneSettingHistoryRouter:
         assert item["confidence_threshold"] == 0.4
         assert item["changed_by"] == str(sample_coordinator.user_id)
 
-    def test_list_filter_by_zone(self, history_client, db_session, sample_zone, sample_coordinator):
+    def test_list_filter_by_zone(
+        self, history_client, db_session, sample_zone, sample_coordinator
+    ):
         other_zone = make_other_zone(db_session)
         make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, other_zone, sample_coordinator)
 
         response = history_client.get(
-            HISTORY_API, params={"zone_id": str(other_zone.zone_id)}, headers=history_headers(sample_coordinator)
+            HISTORY_API,
+            params={"zone_id": str(other_zone.zone_id)},
+            headers=history_headers(sample_coordinator),
         )
 
-        assert [item["zone_id"] for item in response.json()] == [str(other_zone.zone_id)]
+        assert [item["zone_id"] for item in response.json()] == [
+            str(other_zone.zone_id)
+        ]
 
     def test_list_filter_by_changed_by(
-        self, history_client, db_session, sample_zone, sample_coordinator, sample_officer
+        self,
+        history_client,
+        db_session,
+        sample_zone,
+        sample_coordinator,
+        sample_officer,
     ):
         make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, sample_zone, sample_officer)
@@ -687,43 +819,79 @@ class TestZoneSettingHistoryRouter:
             headers=history_headers(sample_coordinator),
         )
 
-        assert [item["changed_by"] for item in response.json()] == [str(sample_officer.user_id)]
+        assert [item["changed_by"] for item in response.json()] == [
+            str(sample_officer.user_id)
+        ]
 
     def test_list_unknown_zone(self, history_client, sample_coordinator):
         response = history_client.get(
-            HISTORY_API, params={"zone_id": str(uuid.uuid4())}, headers=history_headers(sample_coordinator)
+            HISTORY_API,
+            params={"zone_id": str(uuid.uuid4())},
+            headers=history_headers(sample_coordinator),
         )
 
         assert response.status_code == 404
 
     @pytest.mark.parametrize(
-        "params, expected", [({"limit": 1}, 1), ({"limit": 200}, 2), ({"offset": 1}, 1), ({"offset": 2}, 0)]
+        "params, expected",
+        [
+            ({"limit": 1}, 1),
+            ({"limit": 200}, 2),
+            ({"offset": 1}, 1),
+            ({"offset": 2}, 0),
+        ],
     )
-    def test_list_paging(self, history_client, db_session, sample_zone, sample_coordinator, params, expected):
+    def test_list_paging(
+        self,
+        history_client,
+        db_session,
+        sample_zone,
+        sample_coordinator,
+        params,
+        expected,
+    ):
         make_history(db_session, sample_zone, sample_coordinator)
         make_history(db_session, sample_zone, sample_coordinator, minutes_ago=5)
 
-        response = history_client.get(HISTORY_API, params=params, headers=history_headers(sample_coordinator))
+        response = history_client.get(
+            HISTORY_API, params=params, headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 200
         assert len(response.json()) == expected
 
     @pytest.mark.parametrize(
         "params",
-        [{"limit": 0}, {"limit": 201}, {"offset": -1}, {"limit": "ten"}, {"zone_id": "zone-1"}, {"changed_by": "rudo"}],
+        [
+            {"limit": 0},
+            {"limit": 201},
+            {"offset": -1},
+            {"limit": "ten"},
+            {"zone_id": "zone-1"},
+            {"changed_by": "rudo"},
+        ],
     )
     def test_list_bad_query(self, history_client, sample_coordinator, params):
-        response = history_client.get(HISTORY_API, params=params, headers=history_headers(sample_coordinator))
+        response = history_client.get(
+            HISTORY_API, params=params, headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 422
 
     def test_list_officer_forbidden(self, history_client, sample_officer):
-        assert history_client.get(HISTORY_API, headers=history_headers(sample_officer)).status_code == 403
+        assert (
+            history_client.get(
+                HISTORY_API, headers=history_headers(sample_officer)
+            ).status_code
+            == 403
+        )
 
     def test_list_requires_login(self, history_client):
         assert history_client.get(HISTORY_API).status_code == 401
 
-    def test_list_inactive_coordinator(self, history_client, db_session, sample_coordinator):
+    def test_list_inactive_coordinator(
+        self, history_client, db_session, sample_coordinator
+    ):
         headers = history_headers(sample_coordinator)
         sample_coordinator.is_active = False
         db_session.commit()
@@ -734,7 +902,8 @@ class TestZoneSettingHistoryRouter:
         history = make_history(db_session, sample_zone, sample_coordinator)
 
         response = history_client.get(
-            f"{HISTORY_API}/{history.history_id}", headers=history_headers(sample_coordinator)
+            f"{HISTORY_API}/{history.history_id}",
+            headers=history_headers(sample_coordinator),
         )
 
         assert response.status_code == 200
@@ -742,39 +911,62 @@ class TestZoneSettingHistoryRouter:
         assert response.json()["zone_id"] == str(sample_zone.zone_id)
 
     def test_get_not_found(self, history_client, sample_coordinator):
-        response = history_client.get(f"{HISTORY_API}/{uuid.uuid4()}", headers=history_headers(sample_coordinator))
+        response = history_client.get(
+            f"{HISTORY_API}/{uuid.uuid4()}", headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 404
 
     def test_get_bad_id(self, history_client, sample_coordinator):
-        response = history_client.get(f"{HISTORY_API}/not-a-uuid", headers=history_headers(sample_coordinator))
+        response = history_client.get(
+            f"{HISTORY_API}/not-a-uuid", headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 422
 
-    def test_get_officer_forbidden(self, history_client, db_session, sample_zone, sample_coordinator, sample_officer):
+    def test_get_officer_forbidden(
+        self,
+        history_client,
+        db_session,
+        sample_zone,
+        sample_coordinator,
+        sample_officer,
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
-        response = history_client.get(f"{HISTORY_API}/{history.history_id}", headers=history_headers(sample_officer))
+        response = history_client.get(
+            f"{HISTORY_API}/{history.history_id}",
+            headers=history_headers(sample_officer),
+        )
 
         assert response.status_code == 403
 
-    def test_get_requires_login(self, history_client, db_session, sample_zone, sample_coordinator):
+    def test_get_requires_login(
+        self, history_client, db_session, sample_zone, sample_coordinator
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
-        assert history_client.get(f"{HISTORY_API}/{history.history_id}").status_code == 401
+        assert (
+            history_client.get(f"{HISTORY_API}/{history.history_id}").status_code == 401
+        )
 
     @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
     def test_list_cannot_be_changed(self, history_client, sample_coordinator, method):
-        response = getattr(history_client, method)(HISTORY_API, headers=history_headers(sample_coordinator))
+        response = getattr(history_client, method)(
+            HISTORY_API, headers=history_headers(sample_coordinator)
+        )
 
         assert response.status_code == 405
 
     @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
-    def test_entry_cannot_be_changed(self, history_client, db_session, sample_zone, sample_coordinator, method):
+    def test_entry_cannot_be_changed(
+        self, history_client, db_session, sample_zone, sample_coordinator, method
+    ):
         history = make_history(db_session, sample_zone, sample_coordinator)
 
         response = getattr(history_client, method)(
-            f"{HISTORY_API}/{history.history_id}", headers=history_headers(sample_coordinator)
+            f"{HISTORY_API}/{history.history_id}",
+            headers=history_headers(sample_coordinator),
         )
 
         assert response.status_code == 405

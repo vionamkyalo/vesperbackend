@@ -5,7 +5,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, PlainSerializer
 
-DecimalNumber = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
+DecimalNumber = Annotated[
+    Decimal, PlainSerializer(float, return_type=float, when_used="json")
+]
 
 
 class ZoneSettingHistoryRead(BaseModel):

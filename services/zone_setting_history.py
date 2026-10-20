@@ -16,20 +16,38 @@ class ZoneSettingHistoryService:
     def check_coordinator(self, current_user: User):
         if current_user is None or not current_user.is_active:
             logger.warning("setting history access refused: inactive or unknown user")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is not active.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is not active.",
+            )
 
         if current_user.role != UserRole.PATROL_COORDINATOR:
-            logger.warning(f"setting history refused: user {current_user.user_id} is not the coordinator")
+            logger.warning(
+                f"setting history refused: user {current_user.user_id} is not the coordinator"
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the patrol coordinator can view setting history.",
             )
 
-    def list_history(self, db: Session, current_user: User, zone_id=None, changed_by=None, limit=50, offset=0):
+    def list_history(
+        self,
+        db: Session,
+        current_user: User,
+        zone_id=None,
+        changed_by=None,
+        limit=50,
+        offset=0,
+    ):
         self.check_coordinator(current_user)
 
-        if zone_id is not None and db.query(Zone).filter(Zone.zone_id == zone_id).first() is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zone was not found.")
+        if (
+            zone_id is not None
+            and db.query(Zone).filter(Zone.zone_id == zone_id).first() is None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Zone was not found."
+            )
 
         query = db.query(ZoneSettingHistory)
 
@@ -38,14 +56,22 @@ class ZoneSettingHistoryService:
         if changed_by is not None:
             query = query.filter(ZoneSettingHistory.changed_by == changed_by)
 
-        return query.order_by(ZoneSettingHistory.changed_at.desc()).limit(limit).offset(offset).all()
+        return (
+            query.order_by(ZoneSettingHistory.changed_at.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
 
     def get_history(self, db: Session, current_user: User, history_id: uuid.UUID):
         self.check_coordinator(current_user)
         history = zone_setting_history_repository.get(db, history_id)
 
         if history is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Setting history entry was not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Setting history entry was not found.",
+            )
 
         return history
 

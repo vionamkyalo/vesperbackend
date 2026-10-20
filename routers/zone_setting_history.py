@@ -22,7 +22,9 @@ def list_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return zone_setting_history_service.list_history(db, current_user, zone_id, changed_by, limit, offset)
+    return zone_setting_history_service.list_history(
+        db, current_user, zone_id, changed_by, limit, offset
+    )
 
 
 @router.get("/{history_id}", response_model=ZoneSettingHistoryRead)
