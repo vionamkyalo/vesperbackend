@@ -2,9 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from models import ( 
-    alert_assignment,
-)
 from routers.alert_assignment import router as alert_assignment_router
 
 app = FastAPI(title="Vesper", version="0.1.0")
