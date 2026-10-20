@@ -26,7 +26,6 @@ class ViolationReportRepository:
         )
 
     def get_user_by_id(self, db: Session, user_id):
-        """Fetches a user to validate reviewer or mock user constraints strictly in the repository layer."""
         return db.query(User).filter(User.user_id == user_id).first()
 
     def list_reports(

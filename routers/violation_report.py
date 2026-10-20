@@ -102,9 +102,6 @@ def delete_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    """
-    Delete a violation report by its UUID.
-    """
     report = (
         db.query(ViolationReport)
         .filter(ViolationReport.violation_id == violation_id)

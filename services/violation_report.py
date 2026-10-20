@@ -77,7 +77,6 @@ class ViolationReportService:
 
         inspection = violation_report_repository.get_inspection(db, data.inspection_id)
 
-        # The inspection does not exist at all.
         if inspection is None:
             logger.warning(
                 "create_report refused: inspection %s does not exist",
@@ -88,9 +87,6 @@ class ViolationReportService:
                 detail="Inspection was not found.",
             )
 
-        # The inspection exists but belongs to another officer.
-        # The response stays "not found" on purpose, so officers cannot
-        # discover other officers' inspections. The log shows the real reason.
         if inspection.officer_id != current_user.user_id:
             logger.warning(
                 "create_report refused: inspection %s belongs to officer %s, "
