@@ -67,3 +67,21 @@ def enum_type(enum_class, name):
         values_callable=lambda members: [member.value for member in members],
         validate_strings=True,
     )
+
+
+def init_db():
+    """Create all tables. Models are imported here, when the function runs,
+    so SQLAlchemy knows about every table (and to avoid a circular import)."""
+    import models.alert  # noqa: F401
+    import models.alert_assignment  # noqa: F401
+    import models.catch_check  # noqa: F401
+    import models.inspection  # noqa: F401
+    import models.officer_location  # noqa: F401
+    import models.user  # noqa: F401
+    import models.violation_report  # noqa: F401
+    import models.zone  # noqa: F401
+    import models.zone_baseline  # noqa: F401
+    import models.zone_light_reading  # noqa: F401
+    import models.zone_setting_history  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
