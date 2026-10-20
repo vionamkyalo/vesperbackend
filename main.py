@@ -10,7 +10,7 @@ from database import Base, engine
 
 from routers.user import router as user_router
 from routers.auth import router as auth_router
-from routers.catch_check import router as catch_check_router
+
 
 settings = get_settings()
 
@@ -32,7 +32,6 @@ apply_security(app, settings)
 
 app.include_router(user_router)
 app.include_router(auth_router, prefix="/api")
-app.include_router(catch_check_router, prefix="/api")
 
 
 @app.get("/health")
