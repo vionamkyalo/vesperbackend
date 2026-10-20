@@ -2,7 +2,6 @@ import enum
 import uuid
 
 from sqlalchemy import Boolean, Column, String, Uuid
-from sqlalchemy.orm import relationship
 
 from database import Base, UTCDateTime, enum_type, utcnow
 
@@ -26,10 +25,6 @@ class User(Base):
     created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
     updated_at = Column(UTCDateTime(), nullable=False, default=utcnow, onupdate=utcnow)
 
-    assignments = relationship(
-        "AlertAssignment",
-        back_populates="officer",
-        foreign_keys="AlertAssignment.officer_id",
-    )
-    inspections = relationship("Inspection", back_populates="officer")
-    locations = relationship("OfficerLocation", back_populates="officer")
+    # alert_assignments = relationship("AlertAssignment", back_populates="officer")
+    # inspections = relationship("Inspection", back_populates="officer")
+    # locations = relationship("OfficerLocation", back_populates="officer")
