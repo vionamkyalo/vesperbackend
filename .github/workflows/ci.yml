@@ -12,7 +12,7 @@ jobs:
     runs-on: [self-hosted, classroom-ci]
     env:
       DATABASE_URL: "sqlite://"
-      JWT_SECRET_KEY: "test-only-signing-key-do-not-use-in-production"
+      JWT_SECRET: "test-only-signing-key-do-not-use-in-production"
     steps:
       - uses: actions/checkout@v4
         with:
