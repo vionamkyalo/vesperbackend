@@ -105,7 +105,6 @@ class UserService:
                 )
 
     def _commit(self, db: Session) -> None:
-
         try:
             db.commit()
         except IntegrityError as error:
@@ -407,7 +406,6 @@ class UserService:
         current_user: User,
         user_id: uuid.UUID,
     ) -> UserRead:
-
         self.check_coordinator(current_user)
 
         user = user_repository.get(db, user_id)

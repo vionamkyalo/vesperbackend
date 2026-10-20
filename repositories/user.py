@@ -5,7 +5,6 @@ from models.user import User
 
 class UserRepository:
     def create(self, db: Session, user: User) -> User:
-
         db.add(user)
         db.flush()
         return user

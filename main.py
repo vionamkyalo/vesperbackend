@@ -1,4 +1,3 @@
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import get_settings
 from core.security import apply_security
 from database import Base, engine
-
 
 
 from routers.user import router as user_router

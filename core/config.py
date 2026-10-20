@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     create_tables_on_startup: bool = False
 
     jwt_secret_key: str = Field(
-    min_length=32,
-    repr=False,
-    validation_alias="JWT_SECRET",
-)
+        min_length=32,
+        repr=False,
+        validation_alias="JWT_SECRET",
+    )
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_issuer: str = "vesper-api"
     jwt_audience: str = "vesper-clients"

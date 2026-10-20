@@ -88,7 +88,6 @@ async def _vesper_error(request: Request, exc: VesperError) -> JSONResponse:
 async def _validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-
     errors = []
     for error in exc.errors():
         location = [str(part) for part in error.get("loc", [])]
@@ -317,7 +316,6 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def user_from_token(db: Session, token: str) -> User:
-
     payload = decode_token(token, ACCESS_TOKEN)
     user = db.get(User, uuid.UUID(payload["sub"]))
     if user is None or not user.is_active or payload.get("role") != user.role.value:
@@ -472,7 +470,6 @@ class SecurityMiddleware:
 
 
 def apply_security(app: FastAPI, settings: Settings) -> None:
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
