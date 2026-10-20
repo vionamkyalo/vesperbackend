@@ -49,9 +49,9 @@ def get_me(
     return user_service.get_me(current_user)
 
 
-@router.post(
+@router.patch(
     "/me/password",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
 )
 def change_password(
     body: PasswordChange,
@@ -59,6 +59,7 @@ def change_password(
     current_user: User = Depends(get_current_user),
 ):
     user_service.change_password(db, current_user, body)
+    return {"message": "Password changed successfully"}
 
 
 @router.get("/{user_id}", response_model=UserRead)
