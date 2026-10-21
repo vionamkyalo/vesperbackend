@@ -3,7 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import Settings
 from database import init_db
-from models import violation_report  # noqa: F401
+from models.alert import Alert  # noqa: F401
+from models.alert_assignment import AlertAssignment  # noqa: F401
+from models.catch_check import CatchCheck  # noqa: F401
+from models.inspection import Inspection  # noqa: F401
+from models.officer_location import OfficerLocation  # noqa: F401
+from models.user import User  # noqa: F401
+from models.zone import Zone  # noqa: F401
+from models.zone_baseline import ZoneBaseline  # noqa: F401
+from models.zone_light_reading import ZoneLightReading  # noqa: F401
+from models.zone_setting_history import ZoneSettingHistory  # noqa: F401
 from routers.auth import router as auth_router
 from routers.user import router as user_router
 from routers.violation_report import router as violation_report_router
