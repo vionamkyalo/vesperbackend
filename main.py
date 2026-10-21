@@ -1,12 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_db
 from routers.alert_assignment import router as alert_assignment_router
 
 app = FastAPI(title="Vesper", version="0.1.0")
-
-init_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,5 +23,6 @@ app.include_router(
 
 
 @app.get("/health")
-def health_check() -> dict[str, str]:
+def health() -> dict[str, str]:
+    """Let deployment verification confirm that the API is responding."""
     return {"status": "ok"}
