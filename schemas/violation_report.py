@@ -9,7 +9,6 @@ from models.violation_report import ReviewStatus, ViolationType
 class ViolationReportCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    violation_id: uuid.UUID
     inspection_id: uuid.UUID
     violation_type: ViolationType
     rig_identifier: str = Field(min_length=1, max_length=50)

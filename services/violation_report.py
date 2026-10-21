@@ -62,30 +62,6 @@ class ViolationReportService:
                 detail="recorded_at cannot be in the future.",
             )
 
-        existing = violation_report_repository.get(
-            db,
-            data.violation_id,
-        )
-
-        if existing is not None:
-            if (
-                existing.inspection_id != data.inspection_id
-                or existing.inspection.officer_id != current_user.user_id
-            ):
-                logger.warning(
-                    "violation_id %s reused by %s",
-                    data.violation_id,
-                    current_user.user_id,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "A different violation report already uses this violation_id."
-                    ),
-                )
-
-            return existing
-
         inspection = violation_report_repository.get_inspection(
             db,
             data.inspection_id,
@@ -115,7 +91,7 @@ class ViolationReportService:
             )
 
         report = ViolationReport(
-            violation_id=data.violation_id,
+            violation_id=uuid.uuid4(),
             inspection_id=data.inspection_id,
             violation_type=data.violation_type,
             rig_identifier=data.rig_identifier,
