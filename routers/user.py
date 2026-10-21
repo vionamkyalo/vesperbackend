@@ -27,7 +27,7 @@ def create_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return user_service.create_user(db, current_user, body)
+    return user_service.create_officer(db, current_user, body)
 
 
 @router.get("", response_model=List[UserRead])

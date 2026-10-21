@@ -53,6 +53,11 @@ class AuthenticationError(VesperError):
     default_message = "Invalid credentials"
 
 
+class AccountDeactivatedError(VesperError):
+    status_code = 403
+    default_message = "Account is deactivated"
+
+
 class ConflictError(VesperError):
     status_code = 409
     default_message = "The request conflicts with the current state"
@@ -179,6 +184,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
 ACCESS_TOKEN = "access"
 REFRESH_TOKEN = "refresh"
+RESET_TOKEN = "reset"
 
 
 def _create_token(
@@ -217,6 +223,14 @@ def create_refresh_token(user_id: uuid.UUID) -> str:
         str(user_id),
         REFRESH_TOKEN,
         timedelta(days=get_settings().refresh_token_ttl_days),
+    )
+
+
+def create_reset_token(user_id: uuid.UUID) -> str:
+    return _create_token(
+        str(user_id),
+        RESET_TOKEN,
+        timedelta(minutes=15),
     )
 
 
@@ -318,8 +332,16 @@ _bearer = HTTPBearer(auto_error=False)
 def user_from_token(db: Session, token: str) -> User:
     payload = decode_token(token, ACCESS_TOKEN)
     user = db.get(User, uuid.UUID(payload["sub"]))
-    if user is None or not user.is_active or payload.get("role") != user.role.value:
+
+    if user is None:
         raise AuthenticationError("Invalid or expired token")
+
+    if not user.is_active:
+        raise AuthenticationError("Account is deactivated")
+
+    if payload.get("role") != user.role.value:
+        raise AuthenticationError("Invalid or expired token")
+
     return user
 
 
@@ -485,76 +507,3 @@ def apply_security(app: FastAPI, settings: Settings) -> None:
         limiter=SlidingWindowLimiter(settings.api_rate_limit_per_minute, 60),
     )
     register_error_handlers(app)
-from uuid import UUID
-
-from fastapi import Depends, Header, HTTPException, Request, status
-from sqlalchemy.orm import Session
-
-from database import get_db
-from models.user import User, UserRole
-
-
-def require_local_test_mode(request: Request):
-    client_host = request.client.host if request.client else None
-
-    if client_host not in {"127.0.0.1", "::1"}:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Testing tools can only be used from this computer.",
-        )
-
-
-def get_current_user(
-    db: Session = Depends(get_db),
-    x_test_user_id: UUID | None = Header(
-        default=None,
-        alias="X-Test-User-ID",
-        description="LOCAL TESTING ONLY: UUID of an existing test user.",
-    ),
-    _local_test_mode: None = Depends(require_local_test_mode),
-) -> User:
-    if x_test_user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Enter an existing test user's UUID in X-Test-User-ID.",
-        )
-
-    user = db.get(User, x_test_user_id)
-
-    if user is None or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="The selected test user does not exist or is inactive.",
-        )
-
-    return user
-
-
-def require_any_user(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    return current_user
-
-
-def require_coordinator(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    if current_user.role != UserRole.PATROL_COORDINATOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the patrol coordinator can do this.",
-        )
-
-    return current_user
-
-
-def require_officer(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    if current_user.role != UserRole.PATROL_OFFICER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only patrol officers can do this.",
-        )
-
-    return current_user

@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     viirs_radiance_scale: float = 1.0
     viirs_pixel_scale_m: int = 500
 
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    email_from: str = ""
+    frontend_url: str = "http://localhost:3000"
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"

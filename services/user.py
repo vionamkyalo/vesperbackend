@@ -194,7 +194,7 @@ class UserService:
         logger.info("Patrol coordinator %s seeded", user.user_id)
         return user
 
-    def create_user(
+    def create_officer(
         self,
         db: Session,
         current_user: User,
@@ -216,7 +216,7 @@ class UserService:
             phone_number=data.phone_number,
             email=email,
             password_hash=hash_password(data.password),
-            role=data.role,
+            role=UserRole.PATROL_OFFICER,
             is_active=True,
         )
 
