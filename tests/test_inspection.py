@@ -1,8 +1,6 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-import models.catch_check  
-import models.violation_report  
 
 import pytest
 from sqlalchemy.exc import IntegrityError
