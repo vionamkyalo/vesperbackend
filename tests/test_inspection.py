@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
+import models.catch_check  
+import models.violation_report  
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -272,12 +274,17 @@ REAL_SECURITY = hasattr(security, "create_access_token") and hasattr(
     security, "require_any_user"
 )
 
-if not REAL_SECURITY:
-    security.require_officer = stand_in_role_check(UserRole.PATROL_OFFICER)
-    security.require_coordinator = stand_in_role_check(UserRole.PATROL_COORDINATOR)
-    security.require_any_user = stand_in_role_check(
+STAND_INS = {
+    "require_officer": stand_in_role_check(UserRole.PATROL_OFFICER),
+    "require_coordinator": stand_in_role_check(UserRole.PATROL_COORDINATOR),
+    "require_any_user": stand_in_role_check(
         UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFFICER
-    )
+    ),
+}
+
+if not REAL_SECURITY:
+    for name, checker in STAND_INS.items():
+        setattr(security, name, checker)
 
 
 def auth_headers(user):
@@ -300,6 +307,10 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    if not REAL_SECURITY:
+        for name, checker in STAND_INS.items():
+            if hasattr(inspection_router, name):
+                app.dependency_overrides[getattr(inspection_router, name)] = checker
     with TestClient(app) as test_client:
         yield test_client
 
