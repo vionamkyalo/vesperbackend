@@ -1,10 +1,13 @@
 import os
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
 from sqlalchemy import JSON, DateTime, Enum, create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.types import TypeDecorator
+
+load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -67,3 +70,7 @@ def enum_type(enum_class, name):
         values_callable=lambda members: [member.value for member in members],
         validate_strings=True,
     )
+
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
