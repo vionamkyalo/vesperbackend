@@ -301,3 +301,10 @@ def _load_all_models():
 
 
 _load_all_models()
+
+
+@pytest.fixture(autouse=True)
+def no_real_emails(monkeypatch):
+    monkeypatch.setattr(
+        "services.user.send_officer_credentials", lambda *args, **kwargs: None
+    )
