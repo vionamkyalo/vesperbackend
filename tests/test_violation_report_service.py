@@ -29,7 +29,6 @@ from models import (  # noqa: F401
 
 def make_payload(inspection_id, **overrides):
     values = {
-        "violation_id": uuid.uuid4(),
         "inspection_id": inspection_id,
         "violation_type": ViolationType.MISSING_PERMIT,
         "rig_identifier": "KR-1042",
@@ -50,7 +49,6 @@ def make_other_officer():
 
 @pytest.fixture
 def officer(db_session, sample_inspection):
-    # The officer who owns sample_inspection.
     return db_session.get(User, sample_inspection.officer_id)
 
 
@@ -62,12 +60,12 @@ class TestCreateReport:
 
         report = violation_report_service.create_report(db_session, officer, payload)
 
-        assert report.violation_id == payload.violation_id
+        assert report.violation_id is not None
         assert report.inspection_id == sample_inspection.inspection_id
         assert report.violation_type == ViolationType.MISSING_PERMIT
         assert report.review_status == ReviewStatus.SUBMITTED
 
-    def test_resending_same_report_returns_existing(
+    def test_each_report_gets_its_own_server_generated_id(
         self, db_session, officer, sample_inspection
     ):
         payload = make_payload(sample_inspection.inspection_id)
@@ -75,7 +73,7 @@ class TestCreateReport:
         first = violation_report_service.create_report(db_session, officer, payload)
         second = violation_report_service.create_report(db_session, officer, payload)
 
-        assert second.violation_id == first.violation_id
+        assert first.violation_id != second.violation_id
 
     def test_coordinator_cannot_create_report(
         self, db_session, sample_coordinator, sample_inspection

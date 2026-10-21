@@ -11,7 +11,6 @@ from database import get_db, utcnow
 from main import app
 from models.user import User, UserRole
 from models.violation_report import ReviewStatus, ViolationType
-from schemas.violation_report import ViolationReportCreate
 from services.violation_report import violation_report_service
 
 
@@ -35,12 +34,10 @@ def log_in_as(user):
 class TestViolationReportRoutes:
     def test_officer_creates_report(self, client, officer, sample_inspection):
         log_in_as(officer)
-        violation_id = uuid.uuid4()
 
         response = client.post(
             "/violation-reports",
             json={
-                "violation_id": str(violation_id),
                 "inspection_id": str(sample_inspection.inspection_id),
                 "violation_type": ViolationType.MISSING_PERMIT.value,
                 "rig_identifier": "KR-1042",
@@ -50,7 +47,25 @@ class TestViolationReportRoutes:
         )
 
         assert response.status_code == 201
-        assert response.json()["violation_id"] == str(violation_id)
+        # The server generates the id, so it must be a valid UUID.
+        assert uuid.UUID(response.json()["violation_id"])
+
+    def test_client_cannot_send_violation_id(self, client, officer, sample_inspection):
+        log_in_as(officer)
+
+        response = client.post(
+            "/violation-reports",
+            json={
+                "violation_id": str(uuid.uuid4()),
+                "inspection_id": str(sample_inspection.inspection_id),
+                "violation_type": ViolationType.MISSING_PERMIT.value,
+                "rig_identifier": "KR-1042",
+                "description": "No permit on board",
+                "recorded_at": (utcnow() - timedelta(hours=1)).isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
 
     def test_officer_lists_own_reports(self, client, officer, sample_violation):
         log_in_as(officer)
@@ -113,23 +128,6 @@ class TestViolationReportServiceExtras:
             violation_report_service.list_reports(db_session, inactive_user)
 
         assert error.value.status_code == 403
-
-    def test_reused_violation_id_returns_409(
-        self, db_session, officer, sample_violation
-    ):
-        payload = ViolationReportCreate(
-            violation_id=sample_violation.violation_id,
-            inspection_id=uuid.uuid4(),
-            violation_type=ViolationType.MISSING_PERMIT,
-            rig_identifier="KR-9",
-            description="Different report, same ID",
-            recorded_at=utcnow() - timedelta(hours=1),
-        )
-
-        with pytest.raises(HTTPException) as error:
-            violation_report_service.create_report(db_session, officer, payload)
-
-        assert error.value.status_code == 409
 
     def test_coordinator_lists_all_reports(
         self, db_session, sample_coordinator, sample_violation
