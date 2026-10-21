@@ -151,8 +151,7 @@ class UserService:
             validate_password_strength(password)
         except ValidationFailedError as error:
             raise RuntimeError(
-                "The configured coordinator password does not meet "
-                "the password policy."
+                "The configured coordinator password does not meet the password policy."
             ) from error
 
         email = settings.seed_coordinator_email.strip().lower()
