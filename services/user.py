@@ -6,14 +6,26 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.security import (
+    AuthenticationError,
+    RESET_TOKEN,
     ValidationFailedError,
+    create_reset_token,
+    decode_token,
     hash_password,
     validate_password_strength,
     verify_password,
 )
 from models.user import User, UserRole
 from repositories.user import user_repository
-from schemas.user import PasswordChange, UserCreate, UserRead, UserUpdate
+from schemas.user import (
+    ForgotPasswordResponse,
+    PasswordChange,
+    ResetPasswordResponse,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
+from services.email import send_officer_credentials, send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +54,6 @@ class UserService:
 
     def check_coordinator(self, current_user: User) -> None:
         self.check_active(current_user)
-
         if not self.is_coordinator(current_user):
             logger.warning(
                 "User action refused: user %s is not the coordinator",
@@ -88,20 +99,18 @@ class UserService:
     ) -> None:
         if email is not None:
             existing = user_repository.get_by_email(db, email)
-
             if existing is not None and existing.user_id != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=("A user with this email or phone number already exists."),
+                    detail="A user with this email already exists.",
                 )
 
         if phone_number is not None:
             existing = user_repository.get_by_phone(db, phone_number)
-
             if existing is not None and existing.user_id != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=("A user with this email or phone number already exists."),
+                    detail="A user with this phone number already exists.",
                 )
 
     def _commit(self, db: Session) -> None:
@@ -133,7 +142,6 @@ class UserService:
             return None
 
         password = settings.seed_coordinator_password.get_secret_value()
-
         if not password:
             raise RuntimeError(
                 "SEED_COORDINATOR_PASSWORD is needed to create the coordinator"
@@ -143,7 +151,8 @@ class UserService:
             validate_password_strength(password)
         except ValidationFailedError as error:
             raise RuntimeError(
-                "The configured coordinator password does not meet the password policy."
+                "The configured coordinator password does not meet "
+                "the password policy."
             ) from error
 
         email = settings.seed_coordinator_email.strip().lower()
@@ -185,7 +194,7 @@ class UserService:
         logger.info("Patrol coordinator %s seeded", user.user_id)
         return user
 
-    def create_officer(
+    def create_user(
         self,
         db: Session,
         current_user: User,
@@ -195,7 +204,6 @@ class UserService:
         self.check_password_strength(data.password)
 
         email = str(data.email).strip().lower()
-
         self.check_email_and_phone_free(
             db,
             email=email,
@@ -208,7 +216,7 @@ class UserService:
             phone_number=data.phone_number,
             email=email,
             password_hash=hash_password(data.password),
-            role=UserRole.PATROL_OFFICER,
+            role=data.role,
             is_active=True,
         )
 
@@ -218,24 +226,45 @@ class UserService:
             db.refresh(user)
         except IntegrityError as error:
             db.rollback()
-            logger.warning("Officer creation encountered a constraint conflict")
+            logger.warning("User creation encountered a constraint conflict")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="A user with this phone number already exists.",
+                detail=("A user with this email or phone number already exists."),
             ) from error
         except SQLAlchemyError as error:
             db.rollback()
-            logger.exception("Officer creation failed")
+            logger.exception("User creation failed")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="The user could not be created.",
             ) from error
 
         logger.info(
-            "Officer %s created by %s",
+            "User %s with role %s created by %s",
             user.user_id,
+            user.role.value,
             current_user.user_id,
         )
+
+        try:
+            send_officer_credentials(
+                recipient=user.email,
+                first_name=user.first_name,
+                password=data.password,
+            )
+        except Exception as error:
+            logger.exception(
+                "Officer account created, but credential email failed for user %s",
+                user.user_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "The account was created, but the email could not be sent. "
+                    "Check the email configuration before retrying."
+                ),
+            ) from error
+
         return self.to_read(user)
 
     def get_user_record(
@@ -253,7 +282,6 @@ class UserService:
             )
 
         user = user_repository.get(db, user_id)
-
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -293,7 +321,6 @@ class UserService:
             limit=limit,
             offset=offset,
         )
-
         return [self.to_read(user) for user in users]
 
     def update_user(
@@ -332,7 +359,7 @@ class UserService:
             if user.user_id == current_user.user_id and changes["is_active"] is False:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="The coordinator cannot deactivate their own account.",
+                    detail=("The coordinator cannot deactivate their own account."),
                 )
 
         if changes.get("phone_number") is not None:
@@ -390,15 +417,66 @@ class UserService:
         if data.new_password == data.current_password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password must be different from the current one.",
+                detail=("New password must be different from the current one."),
             )
 
         self.check_password_strength(data.new_password)
         current_user.password_hash = hash_password(data.new_password)
+        self._commit(db)
+        logger.info("Password changed for %s", current_user.user_id)
 
+    def forgot_password(self, db: Session, email: str) -> ForgotPasswordResponse:
+        user = user_repository.get_by_email(db, email)
+
+        if user is not None and user.is_active:
+            token = create_reset_token(user.user_id)
+
+            try:
+                send_password_reset_email(
+                    recipient=user.email,
+                    first_name=user.first_name,
+                    reset_token=token,
+                )
+            except Exception as error:
+                logger.exception(
+                    "Password reset email failed for user %s", user.user_id
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "The reset token was created, but the email could not be "
+                        "sent. Check the email configuration before retrying."
+                    ),
+                ) from error
+
+        return ForgotPasswordResponse()
+
+    def reset_password(
+        self, db: Session, token: str, new_password: str
+    ) -> ResetPasswordResponse:
+        self.check_password_strength(new_password)
+
+        try:
+            payload = decode_token(token, RESET_TOKEN)
+            user_id = uuid.UUID(payload["sub"])
+        except AuthenticationError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset token.",
+            )
+
+        user = user_repository.get(db, user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset token.",
+            )
+
+        user.password_hash = hash_password(new_password)
         self._commit(db)
 
-        logger.info("Password changed for %s", current_user.user_id)
+        logger.info("Password reset for %s", user.user_id)
+        return ResetPasswordResponse()
 
     def deactivate_user(
         self,
@@ -409,7 +487,6 @@ class UserService:
         self.check_coordinator(current_user)
 
         user = user_repository.get(db, user_id)
-
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -419,7 +496,7 @@ class UserService:
         if user.user_id == current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The coordinator cannot deactivate their own account.",
+                detail=("The coordinator cannot deactivate their own account."),
             )
 
         if not user.is_active:
@@ -429,7 +506,6 @@ class UserService:
             )
 
         user.is_active = False
-
         self._commit(db)
 
         try:

@@ -12,9 +12,33 @@ from core.security import (
 )
 from database import get_db
 from repositories.user import user_repository
-from schemas.user import LoginRequest, TokenResponse
+from schemas.user import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    LoginRequest,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+    TokenResponse,
+)
+from services.user import user_service
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    body: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    return user_service.forgot_password(db, body.email)
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+def reset_password(
+    body: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    return user_service.reset_password(db, body.token, body.new_password)
 
 
 @router.post("/login", response_model=TokenResponse)

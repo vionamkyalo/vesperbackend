@@ -22,12 +22,12 @@ router = APIRouter(prefix="/users", tags=["users"])
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
 )
-def create_officer(
+def create_user(
     body: UserCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return user_service.create_officer(db, current_user, body)
+    return user_service.create_user(db, current_user, body)
 
 
 @router.get("", response_model=List[UserRead])

@@ -1,7 +1,13 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+)
 
 from models.user import UserRole
 
@@ -17,6 +23,7 @@ class UserCreate(BaseModel):
     phone_number: str = Field(pattern=PHONE_PATTERN)
     email: EmailStr = Field(max_length=100)
     password: str = Field(min_length=12, max_length=128)
+    role: UserRole
 
     @field_validator("email")
     @classmethod
@@ -63,6 +70,34 @@ class LoginRequest(BaseModel):
     @classmethod
     def lower_email(cls, value):
         return value.lower()
+
+
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def lower_email(cls, value):
+        return value.lower()
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str = (
+        "If an account exists for that email, a password reset link has been sent."
+    )
+
+
+class ResetPasswordResponse(BaseModel):
+    message: str = "Password has been reset successfully."
 
 
 class TokenResponse(BaseModel):
