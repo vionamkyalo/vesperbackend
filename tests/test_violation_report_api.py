@@ -47,7 +47,6 @@ class TestViolationReportRoutes:
         )
 
         assert response.status_code == 201
-        # The server generates the id, so it must be a valid UUID.
         assert uuid.UUID(response.json()["violation_id"])
 
     def test_client_cannot_send_violation_id(self, client, officer, sample_inspection):
