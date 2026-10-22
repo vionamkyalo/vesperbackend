@@ -891,7 +891,6 @@ class TestZoneImport:
 
         assert error.value.status_code == 400
         assert db_session.query(Zone).count() == 0
-        
 
     def test_import_zones_overlapping_each_other(
         self, db_session, sample_coordinator, monkeypatch, tmp_path
