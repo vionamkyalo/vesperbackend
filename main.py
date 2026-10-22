@@ -23,10 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(
-    alert_assignment_router,
-    prefix="/alert-assignments",
-)
+app.include_router(alert_assignment_router)
 
 app.include_router(
     violation_report_router,
