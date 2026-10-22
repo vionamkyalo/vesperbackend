@@ -1,14 +1,14 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models.user import User
-from routers.dependencies import require_any_user, require_coordinator
+from core.security import require_any_user, require_coordinator
 from schemas.zone import (
-    ZoneCreate,
+    BasinRead,
     ZoneRead,
     ZoneSettings,
     ZoneUpdate,
@@ -18,15 +18,6 @@ from services.zone import zone_service
 router = APIRouter(prefix="/zones", tags=["zones"])
 
 
-@router.post("", response_model=ZoneRead, status_code=status.HTTP_201_CREATED)
-def create_zone(
-    body: ZoneCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_coordinator),
-):
-    return zone_service.create_zone(db, current_user, body)
-
-
 @router.get("", response_model=List[ZoneRead])
 def list_zones(
     active_only: bool = False,
@@ -34,6 +25,11 @@ def list_zones(
     current_user: User = Depends(require_any_user),
 ):
     return zone_service.list_zones(db, current_user, active_only)
+
+
+@router.get("/basins", response_model=List[BasinRead])
+def list_basins(current_user: User = Depends(require_any_user)):
+    return zone_service.list_basins(current_user)
 
 
 @router.get("/{zone_id}", response_model=ZoneRead)

@@ -15,11 +15,12 @@ from pydantic import ValidationError
 from core import security
 from database import get_db
 from repositories.zone import zone_repository
-from schemas.zone import GeoJSONPolygon, ZoneCreate, ZoneRead, ZoneSettings, ZoneUpdate
-from services.zone import zone_service
+from schemas.zone import GeoJSONPolygon, ZoneRead, ZoneSettings, ZoneUpdate
+from scripts.seed_zones import load_seed, seed_zones
+from services.zone import load_basins, zone_service
 
 
-API = "/api/v1/zones"
+API = "/vesper/zones"
 
 ZONE_POLYGON = {
     "type": "Polygon",
@@ -30,6 +31,40 @@ ZONE_POLYGON = {
             [28.10, -16.80],
             [28.00, -16.80],
             [28.00, -16.90],
+        ]
+    ],
+}
+
+
+def square(west, south, east, north):
+    return {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [west, south],
+                [east, south],
+                [east, north],
+                [west, north],
+                [west, south],
+            ]
+        ],
+    }
+
+
+SANYATI_POLYGON = square(28.79, -16.685, 28.85, -16.625)
+SANYATI_OVERLAP_POLYGON = square(28.81, -16.665, 28.87, -16.605)
+SANYATI_SECOND_POLYGON = square(28.70, -16.74, 28.74, -16.70)
+MLIBIZI_POLYGON = square(27.12, -17.909, 27.144, -17.885)
+BUMI_POLYGON = square(28.38, -16.73, 28.44, -16.67)
+CROSSED_POLYGON = {
+    "type": "Polygon",
+    "coordinates": [
+        [
+            [28.79, -16.685],
+            [28.85, -16.625],
+            [28.85, -16.685],
+            [28.79, -16.625],
+            [28.79, -16.685],
         ]
     ],
 }
@@ -257,22 +292,6 @@ class TestZone:
         assert history in sample_zone.setting_history
 
 
-def valid_body(**changes):
-    body = {
-        "name": "Lakeside North",
-        "basin": "Sanyati",
-        "zone_type": "fishing_zone",
-        "boundary": ZONE_POLYGON,
-        "boat_cap": 20,
-        "radiance_threshold": "12.5000",
-        "cluster_radius_m": "1000.00",
-        "min_cluster_points": 3,
-        "confidence_threshold": "0.4000",
-    }
-    body.update(changes)
-    return body
-
-
 def settings_body(**changes):
     body = {
         "radiance_threshold": "20.0000",
@@ -328,7 +347,7 @@ def client(db_session):
     app = FastAPI()
     if REAL_SECURITY:
         security.register_error_handlers(app)
-    app.include_router(zone_router.router, prefix="/api/v1")
+    app.include_router(zone_router.router, prefix="/vesper")
 
     def override_get_db():
         yield db_session
@@ -398,49 +417,6 @@ class TestZoneRepository:
 
 
 class TestZoneSchema:
-    def test_zone_create_happy_path(self):
-        data = ZoneCreate(**valid_body(name="  Lakeside North  "))
-
-        assert data.name == "Lakeside North"
-        assert data.zone_type == ZoneType.FISHING_ZONE
-        assert data.boundary.type == "Polygon"
-        assert data.is_active is True
-
-    @pytest.mark.parametrize("zone_type", ["fishing_zone", "restricted_area"])
-    def test_zone_create_type_values(self, zone_type):
-        assert ZoneCreate(**valid_body(zone_type=zone_type)).zone_type == ZoneType(
-            zone_type
-        )
-
-    @pytest.mark.parametrize(
-        "field, value",
-        [
-            ("name", ""),
-            ("name", "x" * 101),
-            ("zone_type", "harbour"),
-            ("boat_cap", -1),
-            ("radiance_threshold", "-1"),
-            ("cluster_radius_m", "0"),
-            ("min_cluster_points", 0),
-            ("confidence_threshold", "1.5"),
-            ("rules_confirmed_by", str(uuid.uuid4())),
-        ],
-    )
-    def test_zone_create_rejects_bad_values(self, field, value):
-        with pytest.raises(ValidationError):
-            ZoneCreate(**valid_body(**{field: value}))
-
-    @pytest.mark.parametrize(
-        "closure",
-        [
-            {"closure_end": "2026-11-05"},
-            {"closure_start": "2026-11-05", "closure_end": "2026-11-01"},
-        ],
-    )
-    def test_zone_create_rejects_bad_closure(self, closure):
-        with pytest.raises(ValidationError):
-            ZoneCreate(**valid_body(**closure))
-
     @pytest.mark.parametrize(
         "boundary",
         [
@@ -492,39 +468,6 @@ class TestZoneSchema:
 
 
 class TestZoneService:
-    def test_create_zone(self, db_session, sample_coordinator):
-        zone = zone_service.create_zone(
-            db_session, sample_coordinator, ZoneCreate(**valid_body())
-        )
-
-        assert zone.name == "Lakeside North"
-        assert zone.updated_by == sample_coordinator.user_id
-        assert zone.rules_confirmed_at is None
-        assert (
-            db_session.query(ZoneSettingHistory)
-            .filter(ZoneSettingHistory.zone_id == zone.zone_id)
-            .count()
-            == 1
-        )
-
-    def test_create_zone_duplicate_name(
-        self, db_session, sample_coordinator, sample_zone
-    ):
-        body = ZoneCreate(**valid_body(name="Sanyati Basin East"))
-
-        with pytest.raises(HTTPException) as error:
-            zone_service.create_zone(db_session, sample_coordinator, body)
-
-        assert error.value.status_code == 409
-
-    def test_create_zone_officer_not_allowed(self, db_session, sample_officer):
-        with pytest.raises(HTTPException) as error:
-            zone_service.create_zone(
-                db_session, sample_officer, ZoneCreate(**valid_body())
-            )
-
-        assert error.value.status_code == 403
-
     def test_get_zone(self, db_session, sample_officer, sample_zone):
         assert (
             zone_service.get_zone(
@@ -553,20 +496,20 @@ class TestZoneService:
         ] == [sample_zone.zone_id]
 
     def test_update_zone(self, db_session, sample_coordinator, sample_zone):
-        body = ZoneUpdate(basin="Mlibizi", boat_cap=15)
+        body = ZoneUpdate(zone_type=ZoneType.RESTRICTED_AREA, boat_cap=15)
 
         zone = zone_service.update_zone(
             db_session, sample_coordinator, sample_zone.zone_id, body
         )
 
-        assert zone.basin == "Mlibizi"
+        assert zone.zone_type == ZoneType.RESTRICTED_AREA
         assert zone.boat_cap == 15
         assert zone.rules_confirmed_at is not None
 
     def test_update_zone_boundary_clears_confirmation(
         self, db_session, sample_coordinator, sample_zone
     ):
-        body = ZoneUpdate(boundary=ZONE_POLYGON)
+        body = ZoneUpdate(boundary=SANYATI_POLYGON)
 
         zone = zone_service.update_zone(
             db_session, sample_coordinator, sample_zone.zone_id, body
@@ -574,23 +517,6 @@ class TestZoneService:
 
         assert zone.rules_confirmed_at is None
         assert zone.rules_confirmed_by is None
-
-    def test_update_zone_duplicate_name(
-        self, db_session, sample_coordinator, sample_zone
-    ):
-        other = zone_service.create_zone(
-            db_session, sample_coordinator, ZoneCreate(**valid_body())
-        )
-
-        with pytest.raises(HTTPException) as error:
-            zone_service.update_zone(
-                db_session,
-                sample_coordinator,
-                other.zone_id,
-                ZoneUpdate(name="Sanyati Basin East"),
-            )
-
-        assert error.value.status_code == 409
 
     def test_update_zone_keep_own_name(
         self, db_session, sample_coordinator, sample_zone
@@ -682,52 +608,6 @@ class TestZoneService:
 
 
 class TestZoneRouter:
-    def test_create_zone(self, client, sample_coordinator):
-        response = client.post(
-            API, json=valid_body(), headers=auth_headers(sample_coordinator)
-        )
-
-        assert response.status_code == 201
-        assert response.json()["name"] == "Lakeside North"
-        assert response.json()["confidence_threshold"] == 0.4
-        assert response.json()["boundary"] == ZONE_POLYGON
-
-    def test_create_zone_officer_forbidden(self, client, sample_officer):
-        assert (
-            client.post(
-                API, json=valid_body(), headers=auth_headers(sample_officer)
-            ).status_code
-            == 403
-        )
-
-    def test_create_zone_requires_login(self, client):
-        assert client.post(API, json=valid_body()).status_code == 401
-
-    def test_create_zone_duplicate_name(self, client, sample_coordinator, sample_zone):
-        response = client.post(
-            API,
-            json=valid_body(name="Sanyati Basin East"),
-            headers=auth_headers(sample_coordinator),
-        )
-
-        assert response.status_code == 409
-
-    @pytest.mark.parametrize(
-        "changes",
-        [
-            {"confidence_threshold": "2"},
-            {"boundary": {"type": "Point"}},
-            {"extra": "x"},
-            {"name": ""},
-        ],
-    )
-    def test_create_zone_bad_body(self, client, sample_coordinator, changes):
-        response = client.post(
-            API, json=valid_body(**changes), headers=auth_headers(sample_coordinator)
-        )
-
-        assert response.status_code == 422
-
     def test_list_zones(self, client, sample_officer, sample_zone):
         response = client.get(
             API, params={"active_only": True}, headers=auth_headers(sample_officer)
@@ -796,3 +676,75 @@ class TestZoneRouter:
         )
 
         assert response.status_code == 422
+
+
+class TestZoneBoundary:
+    def test_basins_file_has_five_basins(self):
+        assert [basin["name"] for basin in load_basins()] == [
+            "Mlibizi",
+            "Binga",
+            "Sengwa",
+            "Bumi",
+            "Sanyati",
+        ]
+
+    def test_list_basins(self, sample_officer):
+        basins = zone_service.list_basins(sample_officer)
+
+        assert len(basins) == 5
+        assert all(basin["boundary"]["type"] == "Polygon" for basin in basins)
+
+    def test_update_zone_move_to_another_basin(
+        self, db_session, sample_coordinator, sample_zone
+    ):
+        body = ZoneUpdate(basin="Mlibizi", boundary=MLIBIZI_POLYGON)
+
+        zone = zone_service.update_zone(
+            db_session, sample_coordinator, sample_zone.zone_id, body
+        )
+
+        assert zone.basin == "Mlibizi"
+        assert zone.rules_confirmed_at is None
+
+    def test_update_zone_basin_without_matching_boundary(
+        self, db_session, sample_coordinator, sample_zone
+    ):
+        with pytest.raises(HTTPException) as error:
+            zone_service.update_zone(
+                db_session,
+                sample_coordinator,
+                sample_zone.zone_id,
+                ZoneUpdate(basin="Mlibizi"),
+            )
+
+        assert error.value.status_code == 400
+
+    def test_router_list_basins(self, client, sample_officer):
+        response = client.get(f"{API}/basins", headers=auth_headers(sample_officer))
+
+        assert response.status_code == 200
+        assert response.json()[0]["name"] == "Mlibizi"
+        assert response.json()[0]["boundary"]["type"] == "Polygon"
+
+    def test_router_list_basins_requires_login(self, client):
+        assert client.get(f"{API}/basins").status_code == 401
+
+    def test_seed_official_zones(self, db_session):
+        created = seed_zones(db_session)
+
+        assert [zone.name for zone in created] == [
+            f"Zone {number}" for number in range(1, 9)
+        ]
+        assert all(zone.is_active is False for zone in created)
+        assert all(zone.rules_confirmed_at is None for zone in created)
+
+    def test_seed_official_zones_twice(self, db_session):
+        seed_zones(db_session)
+
+        assert seed_zones(db_session) == []
+        assert db_session.query(Zone).count() == 8
+
+    def test_seed_zones_match_basins(self):
+        basins = {basin["name"] for basin in load_basins()}
+
+        assert {zone["basin"] for zone in load_seed()["zones"]} <= basins

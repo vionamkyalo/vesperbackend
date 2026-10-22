@@ -9,7 +9,6 @@ from pydantic import (
     Field,
     PlainSerializer,
     field_validator,
-    model_validator,
 )
 
 from models.zone import ZoneType
@@ -53,6 +52,11 @@ class GeoJSONPolygon(BaseModel):
         return rings
 
 
+class BasinRead(BaseModel):
+    name: str
+    boundary: dict
+
+
 class ZoneSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -60,31 +64,6 @@ class ZoneSettings(BaseModel):
     cluster_radius_m: Decimal = Field(gt=0, le=50000, max_digits=8, decimal_places=2)
     min_cluster_points: int = Field(ge=1, le=1000)
     confidence_threshold: Decimal = Field(ge=0, le=1, max_digits=5, decimal_places=4)
-
-
-class ZoneCreate(ZoneSettings):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    name: str = Field(min_length=1, max_length=100)
-    basin: str = Field(min_length=1, max_length=50)
-    zone_type: ZoneType
-    boundary: GeoJSONPolygon
-    boat_cap: int | None = Field(default=None, ge=0)
-    closure_start: date | None = None
-    closure_end: date | None = None
-    is_active: bool = True
-
-    @model_validator(mode="after")
-    def check_closure(self):
-        if self.closure_end is not None and self.closure_start is None:
-            raise ValueError("closure_end needs closure_start")
-        if (
-            self.closure_start is not None
-            and self.closure_end is not None
-            and self.closure_end < self.closure_start
-        ):
-            raise ValueError("closure_end must be on or after closure_start")
-        return self
 
 
 class ZoneUpdate(BaseModel):

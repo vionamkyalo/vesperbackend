@@ -1,7 +1,10 @@
+import json
 import logging
 import uuid
+from pathlib import Path
 
 from fastapi import HTTPException, status
+from shapely.geometry import shape
 from sqlalchemy.orm import Session
 
 from database import utcnow
@@ -9,12 +12,19 @@ from models.user import User, UserRole
 from models.zone import Zone
 from models.zone_setting_history import ZoneSettingHistory
 from repositories.zone import zone_repository
-from schemas.zone import ZoneCreate, ZoneSettings, ZoneUpdate
+from schemas.zone import ZoneSettings, ZoneUpdate
 
 logger = logging.getLogger(__name__)
 
 REQUIRED_UPDATE_FIELDS = ["name", "basin", "zone_type", "is_active"]
 OPTIONAL_UPDATE_FIELDS = ["boat_cap", "closure_start", "closure_end"]
+
+BASINS_FILE = Path(__file__).resolve().parent.parent / "seeds" / "kariba_basins.json"
+
+
+def load_basins():
+    with open(BASINS_FILE, encoding="utf-8") as basins_file:
+        return json.load(basins_file)["basins"]
 
 
 class ZoneService:
@@ -74,6 +84,48 @@ class ZoneService:
         )
         db.add(history)
 
+    def basin_shape(self, basin):
+        for item in load_basins():
+            if item["name"] == basin:
+                return shape(item["boundary"])
+
+        names = ", ".join(item["name"] for item in load_basins())
+        logger.warning(f"zone refused: unknown basin {basin}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown basin. Choose one of: {names}.",
+        )
+
+    def check_boundary(self, db: Session, basin, boundary, zone_id=None):
+        zone = shape(boundary)
+
+        if not zone.is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The zone boundary crosses itself.",
+            )
+
+        if not zone.within(self.basin_shape(basin)):
+            logger.warning(f"zone refused: boundary is outside the {basin} basin")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"The zone must be inside the {basin} basin.",
+            )
+
+        for other in db.query(Zone).all():
+            if other.zone_id == zone_id:
+                continue
+            if zone.intersection(shape(other.boundary)).area > 0:
+                logger.warning(f"zone refused: boundary overlaps zone {other.zone_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"The zone overlaps {other.name}.",
+                )
+
+    def list_basins(self, current_user: User):
+        self.check_active(current_user)
+        return load_basins()
+
     def check_name_free(self, db: Session, name, zone_id=None):
         existing = db.query(Zone).filter(Zone.name == name).first()
 
@@ -104,33 +156,6 @@ class ZoneService:
 
         return query.order_by(Zone.name).all()
 
-    def create_zone(self, db: Session, current_user: User, data: ZoneCreate):
-        self.check_coordinator(current_user)
-        self.check_name_free(db, data.name)
-
-        zone = Zone(
-            name=data.name,
-            basin=data.basin,
-            zone_type=data.zone_type,
-            boundary=data.boundary.model_dump(),
-            boat_cap=data.boat_cap,
-            closure_start=data.closure_start,
-            closure_end=data.closure_end,
-            radiance_threshold=data.radiance_threshold,
-            cluster_radius_m=data.cluster_radius_m,
-            min_cluster_points=data.min_cluster_points,
-            confidence_threshold=data.confidence_threshold,
-            is_active=data.is_active,
-            updated_by=current_user.user_id,
-        )
-        zone = zone_repository.create(db, zone)
-        self.record_settings(db, zone, current_user)
-        db.commit()
-        db.refresh(zone)
-
-        logger.info(f"zone {zone.zone_id} created by {current_user.user_id}")
-        return zone
-
     def update_zone(
         self, db: Session, current_user: User, zone_id: uuid.UUID, data: ZoneUpdate
     ):
@@ -140,6 +165,16 @@ class ZoneService:
 
         if changes.get("name") is not None:
             self.check_name_free(db, changes["name"], zone.zone_id)
+
+        if changes.get("basin") is not None or changes.get("boundary") is not None:
+            boundary = (
+                data.boundary.model_dump()
+                if changes.get("boundary") is not None
+                else zone.boundary
+            )
+            self.check_boundary(
+                db, changes.get("basin") or zone.basin, boundary, zone.zone_id
+            )
 
         for field in REQUIRED_UPDATE_FIELDS:
             if field not in changes:
