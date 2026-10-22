@@ -1,9 +1,12 @@
 import json
 import logging
+import os
 import uuid
-from pathlib import Path
+from urllib.request import urlopen
 
+from dotenv import load_dotenv
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from shapely.geometry import shape
 from sqlalchemy.orm import Session
 
@@ -12,19 +15,62 @@ from models.user import User, UserRole
 from models.zone import Zone
 from models.zone_setting_history import ZoneSettingHistory
 from repositories.zone import zone_repository
-from schemas.zone import ZoneSettings, ZoneUpdate
+from schemas.zone import BasinSource, ZoneSettings, ZoneSource, ZoneUpdate
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 REQUIRED_UPDATE_FIELDS = ["name", "basin", "zone_type", "is_active"]
 OPTIONAL_UPDATE_FIELDS = ["boat_cap", "closure_start", "closure_end"]
 
-BASINS_FILE = Path(__file__).resolve().parent.parent / "seeds" / "kariba_basins.json"
+SOURCE_TIMEOUT_SECONDS = 15
+
+
+def read_source(variable):
+    location = os.environ.get(variable)
+
+    if not location:
+        logger.error(f"{variable} is not set")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"{variable} is not set. Point it at the file or URL with the data.",
+        )
+
+    try:
+        if location.startswith(("http://", "https://")):
+            with urlopen(location, timeout=SOURCE_TIMEOUT_SECONDS) as response:
+                return json.load(response)
+
+        with open(location, encoding="utf-8") as source_file:
+            return json.load(source_file)
+    except (OSError, ValueError) as error:
+        logger.error(f"could not read {variable} from {location}: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not read the data in {variable}.",
+        )
+
+
+def load_source(variable, schema):
+    try:
+        return schema.model_validate(read_source(variable))
+    except ValidationError as error:
+        logger.error(f"{variable} is not in the expected format: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"The data in {variable} is not in the expected format.",
+        )
 
 
 def load_basins():
-    with open(BASINS_FILE, encoding="utf-8") as basins_file:
-        return json.load(basins_file)["basins"]
+    return [
+        basin.model_dump() for basin in load_source("BASINS_SOURCE", BasinSource).basins
+    ]
+
+
+def load_zones():
+    return load_source("ZONES_SOURCE", ZoneSource)
 
 
 class ZoneService:
@@ -84,19 +130,21 @@ class ZoneService:
         )
         db.add(history)
 
-    def basin_shape(self, basin):
-        for item in load_basins():
+    def basin_shape(self, basin, basins=None):
+        basins = basins or load_basins()
+
+        for item in basins:
             if item["name"] == basin:
                 return shape(item["boundary"])
 
-        names = ", ".join(item["name"] for item in load_basins())
+        names = ", ".join(item["name"] for item in basins)
         logger.warning(f"zone refused: unknown basin {basin}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown basin. Choose one of: {names}.",
         )
 
-    def check_boundary(self, db: Session, basin, boundary, zone_id=None):
+    def check_boundary(self, db: Session, basin, boundary, zone_id=None, basins=None):
         zone = shape(boundary)
 
         if not zone.is_valid:
@@ -105,7 +153,7 @@ class ZoneService:
                 detail="The zone boundary crosses itself.",
             )
 
-        if not zone.within(self.basin_shape(basin)):
+        if not zone.within(self.basin_shape(basin, basins)):
             logger.warning(f"zone refused: boundary is outside the {basin} basin")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -121,6 +169,60 @@ class ZoneService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"The zone overlaps {other.name}.",
                 )
+
+    def check_import_overlaps(self, items):
+        shapes = [(item.name, shape(item.boundary.model_dump())) for item in items]
+
+        for index, (name, boundary) in enumerate(shapes):
+            for other_name, other in shapes[index + 1 :]:
+                if boundary.intersection(other).area > 0:
+                    logger.warning(f"zone import refused: {name} overlaps {other_name}")
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"{name} overlaps {other_name} in ZONES_SOURCE.",
+                    )
+
+    def import_zones(self, db: Session, current_user: User):
+        self.check_coordinator(current_user)
+        data = load_zones()
+        basins = load_basins()
+        existing = {name for (name,) in db.query(Zone.name).all()}
+        new_items = [item for item in data.zones if item.name not in existing]
+
+        for item in new_items:
+            try:
+                self.check_boundary(
+                    db, item.basin, item.boundary.model_dump(), basins=basins
+                )
+            except HTTPException as error:
+                raise HTTPException(
+                    status_code=error.status_code,
+                    detail=f"{item.name}: {error.detail}",
+                )
+        self.check_import_overlaps(new_items)
+
+        defaults = data.defaults
+        created = []
+        for item in new_items:
+            zone = Zone(
+                name=item.name,
+                basin=item.basin,
+                zone_type=item.zone_type or defaults.zone_type,
+                boundary=item.boundary.model_dump(),
+                radiance_threshold=defaults.radiance_threshold,
+                cluster_radius_m=defaults.cluster_radius_m,
+                min_cluster_points=defaults.min_cluster_points,
+                confidence_threshold=defaults.confidence_threshold,
+                is_active=False,
+                updated_by=current_user.user_id,
+            )
+            created.append(zone_repository.create(db, zone))
+
+        logger.info(
+            f"{len(created)} zone(s) imported by {current_user.user_id}, "
+            f"{len(data.zones) - len(created)} already saved"
+        )
+        return created
 
     def list_basins(self, current_user: User):
         self.check_active(current_user)

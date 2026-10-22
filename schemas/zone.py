@@ -57,6 +57,19 @@ class BasinRead(BaseModel):
     boundary: dict
 
 
+class BasinSourceItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=50)
+    boundary: GeoJSONPolygon
+
+
+class BasinSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    basins: List[BasinSourceItem] = Field(min_length=1)
+
+
 class ZoneSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -64,6 +77,28 @@ class ZoneSettings(BaseModel):
     cluster_radius_m: Decimal = Field(gt=0, le=50000, max_digits=8, decimal_places=2)
     min_cluster_points: int = Field(ge=1, le=1000)
     confidence_threshold: Decimal = Field(ge=0, le=1, max_digits=5, decimal_places=4)
+
+
+class ZoneSourceDefaults(ZoneSettings):
+    zone_type: ZoneType
+
+
+class ZoneSourceItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=100)
+    basin: str = Field(min_length=1, max_length=50)
+    managed_by: str | None = Field(default=None, max_length=100)
+    zone_type: ZoneType | None = None
+    boundary: GeoJSONPolygon
+
+
+class ZoneSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str | None = None
+    defaults: ZoneSourceDefaults
+    zones: List[ZoneSourceItem] = Field(min_length=1)
 
 
 class ZoneUpdate(BaseModel):

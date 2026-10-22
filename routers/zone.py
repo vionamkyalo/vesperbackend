@@ -32,6 +32,14 @@ def list_basins(current_user: User = Depends(require_any_user)):
     return zone_service.list_basins(current_user)
 
 
+@router.post("/import", response_model=List[ZoneRead])
+def import_zones(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_coordinator),
+):
+    return zone_service.import_zones(db, current_user)
+
+
 @router.get("/{zone_id}", response_model=ZoneRead)
 def get_zone(
     zone_id: uuid.UUID,

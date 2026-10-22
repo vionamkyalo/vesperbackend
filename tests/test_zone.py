@@ -1,3 +1,5 @@
+import io
+import json
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -16,8 +18,8 @@ from core import security
 from database import get_db
 from repositories.zone import zone_repository
 from schemas.zone import GeoJSONPolygon, ZoneRead, ZoneSettings, ZoneUpdate
-from scripts.seed_zones import load_seed, seed_zones
-from services.zone import load_basins, zone_service
+from services import zone as zone_module
+from services.zone import load_basins, load_zones, zone_service
 
 
 API = "/vesper/zones"
@@ -68,6 +70,63 @@ CROSSED_POLYGON = {
         ]
     ],
 }
+
+
+TEST_BASINS = {
+    "basins": [
+        {"name": "Mlibizi", "boundary": square(27.0, -18.0, 27.3, -17.8)},
+        {"name": "Binga", "boundary": square(27.3, -17.8, 27.7, -17.4)},
+        {"name": "Sengwa", "boundary": square(27.7, -17.4, 28.3, -16.8)},
+        {"name": "Bumi", "boundary": square(28.3, -16.8, 28.6, -16.5)},
+        {"name": "Sanyati", "boundary": square(28.6, -16.8, 29.2, -16.4)},
+    ]
+}
+
+TEST_ZONES = {
+    "source": "Test zones",
+    "defaults": {
+        "zone_type": "fishing_zone",
+        "radiance_threshold": "10.0000",
+        "cluster_radius_m": "1500.00",
+        "min_cluster_points": 3,
+        "confidence_threshold": "0.5000",
+    },
+    "zones": [
+        {
+            "name": "Zone 1",
+            "basin": "Sanyati",
+            "managed_by": "ZimParks",
+            "boundary": SANYATI_POLYGON,
+        },
+        {
+            "name": "Zone 2",
+            "basin": "Bumi",
+            "managed_by": "Nyaminyami RDC",
+            "boundary": BUMI_POLYGON,
+        },
+        {
+            "name": "Zone 3",
+            "basin": "Mlibizi",
+            "zone_type": "restricted_area",
+            "boundary": MLIBIZI_POLYGON,
+        },
+    ],
+}
+
+
+def write_source(folder, name, data):
+    path = folder / name
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return str(path)
+
+
+@pytest.fixture(autouse=True)
+def zone_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "BASINS_SOURCE", write_source(tmp_path, "basins.json", TEST_BASINS)
+    )
+    monkeypatch.setenv("ZONES_SOURCE", write_source(tmp_path, "zones.json", TEST_ZONES))
+    return tmp_path
 
 
 class TestZone:
@@ -729,22 +788,152 @@ class TestZoneBoundary:
     def test_router_list_basins_requires_login(self, client):
         assert client.get(f"{API}/basins").status_code == 401
 
-    def test_seed_official_zones(self, db_session):
-        created = seed_zones(db_session)
-
-        assert [zone.name for zone in created] == [
-            f"Zone {number}" for number in range(1, 9)
-        ]
-        assert all(zone.is_active is False for zone in created)
-        assert all(zone.rules_confirmed_at is None for zone in created)
-
-    def test_seed_official_zones_twice(self, db_session):
-        seed_zones(db_session)
-
-        assert seed_zones(db_session) == []
-        assert db_session.query(Zone).count() == 8
-
-    def test_seed_zones_match_basins(self):
+    def test_basins_match_zone_source(self):
         basins = {basin["name"] for basin in load_basins()}
 
-        assert {zone["basin"] for zone in load_seed()["zones"]} <= basins
+        assert {zone.basin for zone in load_zones().zones} <= basins
+
+
+class TestZoneSource:
+    def test_load_basins_from_file(self):
+        assert len(load_basins()) == 5
+
+    def test_load_zones_from_file(self):
+        data = load_zones()
+
+        assert [zone.name for zone in data.zones] == ["Zone 1", "Zone 2", "Zone 3"]
+        assert data.defaults.min_cluster_points == 3
+
+    def test_load_basins_from_url(self, monkeypatch):
+        opened = []
+
+        def fake_urlopen(url, timeout):
+            opened.append(url)
+            return io.BytesIO(json.dumps(TEST_BASINS).encode("utf-8"))
+
+        monkeypatch.setattr(zone_module, "urlopen", fake_urlopen)
+        monkeypatch.setenv("BASINS_SOURCE", "https://example.org/kariba_basins.json")
+
+        assert len(load_basins()) == 5
+        assert opened == ["https://example.org/kariba_basins.json"]
+
+    def test_missing_source_setting(self, monkeypatch):
+        monkeypatch.delenv("BASINS_SOURCE")
+
+        with pytest.raises(HTTPException) as error:
+            load_basins()
+
+        assert error.value.status_code == 503
+        assert "BASINS_SOURCE" in error.value.detail
+
+    def test_source_file_not_found(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("ZONES_SOURCE", str(tmp_path / "missing.json"))
+
+        with pytest.raises(HTTPException) as error:
+            load_zones()
+
+        assert error.value.status_code == 503
+
+    def test_source_is_not_json(self, monkeypatch, tmp_path):
+        path = tmp_path / "broken.json"
+        path.write_text("not json", encoding="utf-8")
+        monkeypatch.setenv("ZONES_SOURCE", str(path))
+
+        with pytest.raises(HTTPException) as error:
+            load_zones()
+
+        assert error.value.status_code == 503
+
+    def test_source_in_wrong_format(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(
+            "BASINS_SOURCE", write_source(tmp_path, "bad.json", {"zones": []})
+        )
+
+        with pytest.raises(HTTPException) as error:
+            load_basins()
+
+        assert error.value.status_code == 503
+        assert "expected format" in error.value.detail
+
+
+class TestZoneImport:
+    def test_import_zones(self, db_session, sample_coordinator):
+        created = zone_service.import_zones(db_session, sample_coordinator)
+
+        assert [zone.name for zone in created] == ["Zone 1", "Zone 2", "Zone 3"]
+        assert all(zone.is_active is False for zone in created)
+        assert all(zone.rules_confirmed_at is None for zone in created)
+        assert created[0].radiance_threshold == Decimal("10.0000")
+        assert created[0].zone_type == ZoneType.FISHING_ZONE
+        assert created[2].zone_type == ZoneType.RESTRICTED_AREA
+
+    def test_import_zones_twice(self, db_session, sample_coordinator):
+        zone_service.import_zones(db_session, sample_coordinator)
+
+        assert zone_service.import_zones(db_session, sample_coordinator) == []
+        assert db_session.query(Zone).count() == 3
+
+    def test_import_zones_officer_forbidden(self, db_session, sample_officer):
+        with pytest.raises(HTTPException) as error:
+            zone_service.import_zones(db_session, sample_officer)
+
+        assert error.value.status_code == 403
+
+    def test_import_zones_outside_basin(
+        self, db_session, sample_coordinator, monkeypatch, tmp_path
+    ):
+        data = json.loads(json.dumps(TEST_ZONES))
+        data["zones"][0]["basin"] = "Binga"
+        monkeypatch.setenv("ZONES_SOURCE", write_source(tmp_path, "z.json", data))
+
+        with pytest.raises(HTTPException) as error:
+            zone_service.import_zones(db_session, sample_coordinator)
+
+        assert error.value.status_code == 400
+        assert db_session.query(Zone).count() == 0
+
+    def test_import_zones_overlapping_each_other(
+        self, db_session, sample_coordinator, monkeypatch, tmp_path
+    ):
+        data = json.loads(json.dumps(TEST_ZONES))
+        data["zones"][1] = {
+            "name": "Zone 2",
+            "basin": "Sanyati",
+            "boundary": SANYATI_OVERLAP_POLYGON,
+        }
+        monkeypatch.setenv("ZONES_SOURCE", write_source(tmp_path, "z.json", data))
+
+        with pytest.raises(HTTPException) as error:
+            zone_service.import_zones(db_session, sample_coordinator)
+
+        assert error.value.status_code == 409
+        assert db_session.query(Zone).count() == 0
+
+    def test_import_zones_missing_source(
+        self, db_session, sample_coordinator, monkeypatch
+    ):
+        monkeypatch.delenv("ZONES_SOURCE")
+
+        with pytest.raises(HTTPException) as error:
+            zone_service.import_zones(db_session, sample_coordinator)
+
+        assert error.value.status_code == 503
+
+    def test_router_import_zones(self, client, sample_coordinator):
+        headers = auth_headers(sample_coordinator)
+
+        first = client.post(f"{API}/import", headers=headers)
+        second = client.post(f"{API}/import", headers=headers)
+
+        assert first.status_code == 200
+        assert [zone["name"] for zone in first.json()] == ["Zone 1", "Zone 2", "Zone 3"]
+        assert second.status_code == 200
+        assert second.json() == []
+
+    def test_router_import_zones_officer_forbidden(self, client, sample_officer):
+        response = client.post(f"{API}/import", headers=auth_headers(sample_officer))
+
+        assert response.status_code == 403
+
+    def test_router_import_zones_requires_login(self, client):
+        assert client.post(f"{API}/import").status_code == 401
