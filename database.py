@@ -6,7 +6,9 @@ from sqlalchemy import JSON, DateTime, Enum, create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.types import TypeDecorator
+from core.config import get_settings
 
+DATABASE_URL = get_settings().database_url
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
