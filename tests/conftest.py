@@ -288,3 +288,23 @@ def sample_location(db_session, sample_officer, sample_alert):
     db_session.commit()
     db_session.refresh(location)
     return location
+
+
+def _load_all_models():
+    import importlib
+    import pkgutil
+
+    import models
+
+    for module in pkgutil.iter_modules(models.__path__):
+        importlib.import_module(f"models.{module.name}")
+
+
+_load_all_models()
+
+
+@pytest.fixture(autouse=True)
+def no_real_emails(monkeypatch):
+    monkeypatch.setattr(
+        "services.user.send_officer_credentials", lambda *args, **kwargs: None
+    )
