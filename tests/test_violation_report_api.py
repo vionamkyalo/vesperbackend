@@ -36,7 +36,7 @@ class TestViolationReportRoutes:
         log_in_as(officer)
 
         response = client.post(
-            "/violation-reports",
+            "/vesper/violation-reports",
             json={
                 "inspection_id": str(sample_inspection.inspection_id),
                 "violation_type": ViolationType.MISSING_PERMIT.value,
@@ -53,7 +53,7 @@ class TestViolationReportRoutes:
         log_in_as(officer)
 
         response = client.post(
-            "/violation-reports",
+            "/vesper/violation-reports",
             json={
                 "violation_id": str(uuid.uuid4()),
                 "inspection_id": str(sample_inspection.inspection_id),
@@ -69,7 +69,7 @@ class TestViolationReportRoutes:
     def test_officer_lists_own_reports(self, client, officer, sample_violation):
         log_in_as(officer)
 
-        response = client.get("/violation-reports")
+        response = client.get("/vesper/violation-reports")
 
         assert response.status_code == 200
         ids = [report["violation_id"] for report in response.json()]
@@ -78,7 +78,9 @@ class TestViolationReportRoutes:
     def test_officer_gets_own_report(self, client, officer, sample_violation):
         log_in_as(officer)
 
-        response = client.get(f"/violation-reports/{sample_violation.violation_id}")
+        response = client.get(
+            f"/vesper/violation-reports/{sample_violation.violation_id}"
+        )
 
         assert response.status_code == 200
         assert response.json()["violation_id"] == str(sample_violation.violation_id)
@@ -89,7 +91,7 @@ class TestViolationReportRoutes:
         log_in_as(sample_coordinator)
 
         response = client.post(
-            f"/violation-reports/{sample_violation.violation_id}/review"
+            f"/vesper/violation-reports/{sample_violation.violation_id}/review"
         )
 
         assert response.status_code == 200
@@ -99,7 +101,7 @@ class TestViolationReportRoutes:
         self, client, sample_coordinator, sample_violation
     ):
         log_in_as(sample_coordinator)
-        url = f"/violation-reports/{sample_violation.violation_id}"
+        url = f"/vesper/violation-reports/{sample_violation.violation_id}"
 
         delete_response = client.delete(url)
         get_response = client.get(url)
@@ -110,7 +112,7 @@ class TestViolationReportRoutes:
     def test_deleting_unknown_report_returns_404(self, client, sample_coordinator):
         log_in_as(sample_coordinator)
 
-        response = client.delete(f"/violation-reports/{uuid.uuid4()}")
+        response = client.delete(f"/vesper/violation-reports/{uuid.uuid4()}")
 
         assert response.status_code == 404
 
