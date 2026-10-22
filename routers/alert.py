@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from core.security import (
     get_current_user,
-    require_patrol_coordinator,
-    require_patrol_officer,
+    require_coordinator,
+    require_officer,
 )
 from database import get_db
 from models.user import User
@@ -29,7 +29,7 @@ router = APIRouter(tags=["Alerts"])
 def create_alert(
     data: AlertCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_patrol_coordinator),
+    current_user: User = Depends(require_coordinator),
 ):
     return AlertService(db).create_alert(data, current_user)
 
@@ -38,7 +38,7 @@ def create_alert(
 def list_alerts(
     query: Annotated[AlertListQuery, Query()],
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_patrol_coordinator),
+    current_user: User = Depends(require_coordinator),
 ):
     return AlertService(db).list_alerts(query)
 
@@ -47,7 +47,7 @@ def list_alerts(
 def list_my_alerts(
     query: Annotated[MyAlertsQuery, Query()],
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_patrol_officer),
+    current_user: User = Depends(require_officer),
 ):
     return AlertService(db).list_my_alerts(current_user, query)
 
@@ -66,7 +66,7 @@ def update_alert_status(
     alert_id: uuid.UUID,
     data: AlertStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_patrol_coordinator),
+    current_user: User = Depends(require_coordinator),
 ):
     return AlertService(db).update_alert_status(alert_id, data, current_user)
 
@@ -76,6 +76,6 @@ def record_verification(
     alert_id: uuid.UUID,
     data: AlertVerificationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_patrol_coordinator),
+    current_user: User = Depends(require_coordinator),
 ):
     return AlertService(db).record_verification(alert_id, data, current_user)

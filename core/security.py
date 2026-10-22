@@ -1,113 +1,507 @@
+import json
+import logging
+import re
+import threading
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Deque, Dict
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from core.config import get_settings
+from core.config import Settings, get_settings, redact
 from database import get_db
 from models.user import User, UserRole
 
-ACCESS_TOKEN_TYPE = "access"
+logger = logging.getLogger("vesper.security")
+audit_logger = logging.getLogger("vesper.audit")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+
+class VesperError(Exception):
+    status_code = 400
+    default_message = "Request could not be processed"
+
+    def __init__(self, message: str | None = None):
+        self.message = message or self.default_message
+        super().__init__(self.message)
 
 
-def _credentials_error() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+class NotFoundError(VesperError):
+    status_code = 404
+    default_message = "Resource not found"
+
+
+class PermissionDeniedError(VesperError):
+    status_code = 403
+    default_message = "You do not have permission to perform this action"
+
+
+class AuthenticationError(VesperError):
+    status_code = 401
+    default_message = "Invalid credentials"
+
+
+class AccountDeactivatedError(VesperError):
+    status_code = 403
+    default_message = "Account is deactivated"
+
+
+class ConflictError(VesperError):
+    status_code = 409
+    default_message = "The request conflicts with the current state"
+
+
+class ValidationFailedError(VesperError):
+    status_code = 422
+    default_message = "The submitted data is not valid"
+
+
+class TooManyRequestsError(VesperError):
+    status_code = 429
+    default_message = "Too many requests. Try again later"
+
+
+class SatelliteDataError(VesperError):
+    status_code = 502
+    default_message = "Satellite data could not be retrieved"
+
+
+def request_id(request: Request) -> str:
+    return request.scope.get("state", {}).get("request_id") or uuid.uuid4().hex
+
+
+async def vesper_error(request: Request, exc: VesperError) -> JSONResponse:
+    headers = (
+        {"WWW-Authenticate": "Bearer"} if isinstance(exc, AuthenticationError) else None
+    )
+    body = {"detail": exc.message, "request_id": request_id(request)}
+    return JSONResponse(status_code=exc.status_code, content=body, headers=headers)
+
+
+async def validation_error(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    errors = []
+    for error in exc.errors():
+        location = [str(part) for part in error.get("loc", [])]
+        errors.append(
+            {"loc": location, "msg": error.get("msg"), "type": error.get("type")}
+        )
+    body = {
+        "detail": "The submitted data is not valid",
+        "errors": errors,
+        "request_id": request_id(request),
+    }
+    return JSONResponse(status_code=422, content=body)
+
+
+async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    detail = exc.detail if exc.status_code != 500 else "Server error"
+    body = {"detail": detail, "request_id": request_id(request)}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=body,
+        headers=getattr(exc, "headers", None),
     )
 
 
-def create_access_token(
-    user_id: uuid.UUID | str,
-    role: UserRole | str | None = None,
-    expires_minutes: int | None = None,
-) -> str:
+async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    request_id_str = request_id(request)
+    logger.exception(
+        "Unhandled error",
+        extra={
+            "extra_fields": {"request_id": request_id_str, "path": request.url.path}
+        },
+    )
+    body = {
+        "detail": "Something went wrong. Quote the request ID if you report this.",
+        "request_id": request_id_str,
+    }
+    return JSONResponse(status_code=500, content=body)
 
+
+def register_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(VesperError, vesper_error)
+    app.add_exception_handler(RequestValidationError, validation_error)
+    app.add_exception_handler(StarletteHTTPException, http_error)
+    app.add_exception_handler(Exception, unhandled_error)
+
+
+_hasher = PasswordHasher()
+_DUMMY_HASH = _hasher.hash("dummy-password-for-timing")
+COMMON_PASSWORDS = {
+    "password123",
+    "123456789012",
+    "qwertyuiop12",
+    "welcome12345",
+    "kartoffeln12",
+    "vesper123456",
+}
+
+
+def validate_password_strength(password: str) -> str:
+    if len(password) < 12 or len(password) > 128:
+        raise ValidationFailedError(
+            "Password must be between 12 and 128 characters long"
+        )
+    if password.lower() in COMMON_PASSWORDS:
+        raise ValidationFailedError("Password is too common")
+    if not (
+        re.search(r"[a-z]", password)
+        and re.search(r"[A-Z]", password)
+        and re.search(r"\d", password)
+    ):
+        raise ValidationFailedError(
+            "Password must contain upper case, lower case and a digit"
+        )
+    return password
+
+
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
+
+
+def verify_password(password: str, password_hash: str | None) -> bool:
+    if not password_hash:
+        try:
+            _hasher.verify(_DUMMY_HASH, password)
+        except VerificationError:
+            pass
+        return False
+    try:
+        return _hasher.verify(password_hash, password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
+
+
+ACCESS_TOKEN = "access"
+REFRESH_TOKEN = "refresh"
+RESET_TOKEN = "reset"
+
+
+def create_token(
+    subject: str,
+    token_type: str,
+    lifetime: timedelta,
+    extra: Dict[str, Any] | None = None,
+) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
-    lifetime = (
-        expires_minutes
-        if expires_minutes is not None
-        else settings.access_token_expire_minutes
-    )
     payload = {
-        "sub": str(user_id),
-        "type": ACCESS_TOKEN_TYPE,
+        "sub": subject,
+        "type": token_type,
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
         "iat": now,
-        "exp": now + timedelta(minutes=lifetime),
+        "nbf": now,
+        "exp": now + lifetime,
+        "jti": uuid.uuid4().hex,
+        **(extra or {}),
     }
-    if role is not None:
-        payload["role"] = role.value if isinstance(role, UserRole) else str(role)
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(
+        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
 
 
-def decode_access_token(token: str) -> uuid.UUID:
+def create_access_token(user_id: uuid.UUID, role: str) -> str:
+    minutes = get_settings().access_token_ttl_minutes
+    return create_token(
+        str(user_id), ACCESS_TOKEN, timedelta(minutes=minutes), {"role": role}
+    )
+
+
+def create_refresh_token(user_id: uuid.UUID) -> str:
+    return create_token(
+        str(user_id),
+        REFRESH_TOKEN,
+        timedelta(days=get_settings().refresh_token_ttl_days),
+    )
+
+
+def create_reset_token(user_id: uuid.UUID) -> str:
+    return create_token(str(user_id), RESET_TOKEN, timedelta(minutes=15))
+
+
+def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
     settings = get_settings()
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM],
-            options={"require": ["exp", "sub"]},
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer,
+            options={"require": ["exp", "iat", "sub", "jti", "iss", "aud"]},
         )
-    except jwt.PyJWTError:
-        raise _credentials_error()
-
-    if payload.get("type") != ACCESS_TOKEN_TYPE:
-        raise _credentials_error()
-
-    try:
-        return uuid.UUID(str(payload["sub"]))
-    except (ValueError, TypeError):
-        raise _credentials_error()
+        uuid.UUID(payload["sub"])
+    except (jwt.PyJWTError, ValueError, TypeError) as exc:
+        raise AuthenticationError("Invalid or expired token") from exc
+    if payload.get("type") != expected_type:
+        raise AuthenticationError("Invalid or expired token")
+    return payload
 
 
-def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User:
+class SlidingWindowLimiter:
+    def __init__(self, limit: int, window_seconds: int = 60):
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self.hits: dict[str, Deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
 
-    if not token:
-        raise _credentials_error()
+    def allow(self, key: str, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            hits = self.hits[key]
+            while hits and now - hits[0] >= self.window_seconds:
+                hits.popleft()
+            if len(hits) >= self.limit:
+                return False
+            hits.append(now)
+            return True
 
-    user_id = decode_access_token(token)
-    user = db.get(User, user_id)
+
+class LoginAttemptTracker:
+    def __init__(self, max_attempts: int, lockout_seconds: int):
+        self.max_attempts = max_attempts
+        self.lockout_seconds = lockout_seconds
+        self.failures: dict[str, Deque[float]] = defaultdict(deque)
+        self.locked_until: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def is_locked(self, key: str, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            until = self.locked_until.get(key)
+            if until is None:
+                return False
+            if now >= until:
+                self.locked_until.pop(key, None)
+                self.failures.pop(key, None)
+                return False
+            return True
+
+    def record_failure(self, key: str, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            failures = self.failures[key]
+            while failures and now - failures[0] >= self.lockout_seconds:
+                failures.popleft()
+            failures.append(now)
+            if len(failures) >= self.max_attempts:
+                self.locked_until[key] = now + self.lockout_seconds
+
+    def record_success(self, key: str) -> None:
+        with self._lock:
+            self.failures.pop(key, None)
+            self.locked_until.pop(key, None)
+
+
+_login_tracker: LoginAttemptTracker | None = None
+
+
+def get_login_tracker() -> LoginAttemptTracker:
+    global _login_tracker
+    if _login_tracker is None:
+        settings = get_settings()
+        _login_tracker = LoginAttemptTracker(
+            settings.login_max_attempts, settings.login_lockout_minutes * 60
+        )
+    return _login_tracker
+
+
+def reset_login_tracker() -> None:
+    global _login_tracker
+    _login_tracker = None
+
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def user_from_token(db: Session, token: str) -> User:
+    payload = decode_token(token, ACCESS_TOKEN)
+    user = db.get(User, uuid.UUID(payload["sub"]))
     if user is None:
-        raise _credentials_error()
-
+        raise AuthenticationError("Invalid or expired token")
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is not active",
-        )
+        raise AuthenticationError("Account is deactivated")
+    if payload.get("role") != user.role.value:
+        raise AuthenticationError("Invalid or expired token")
     return user
 
 
-def require_patrol_coordinator(
-    current_user: User = Depends(get_current_user),
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
 ) -> User:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise AuthenticationError("Not authenticated")
+    return user_from_token(db, credentials.credentials)
 
-    if current_user.role != UserRole.PATROL_COORDINATOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Patrol coordinator privileges required",
+
+def require_role(roles: UserRole) -> Callable[..., User]:
+    def checker(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles:
+            raise PermissionDeniedError()
+        return user
+
+    return checker
+
+
+require_coordinator = require_role({UserRole.PATROL_COORDINATOR})
+require_officer = require_role({UserRole.PATROL_OFFICER})
+require_any_user = require_role({UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFFICER})
+
+
+def client_ip(request: Scope) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def audit_log(
+    actor_id: uuid.UUID | None,
+    action: str,
+    entity: str,
+    entity_id: Any = None,
+    **metadata: Any,
+) -> None:
+    fields = {
+        "actor_id": str(actor_id) if actor_id else None,
+        "action": action,
+        "entity": entity,
+        "entity_id": str(entity_id) if entity_id is not None else None,
+        **redact(metadata or {}),
+    }
+    audit_logger.info("audit", extra={"extra_fields": fields})
+
+
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+
+
+async def reject(
+    send: Send, status: int, detail: str, headers: list | None = None
+) -> None:
+    body = json.dumps({"detail": detail}).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ]
+            + (headers or []),
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+class SecurityMiddleware:
+    def __init__(self, app: ASGIApp, settings: Settings, limiter: SlidingWindowLimiter):
+        self.app = app
+        self.max_request_bytes = settings.max_request_bytes
+        self.enforce_https = settings.is_production
+        self.limiter = limiter
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers") or [])
+        incoming_id = headers.get(b"x-request-id", b"").decode("latin-1")
+        request_id = (
+            incoming_id if _REQUEST_ID_RE.match(incoming_id) else uuid.uuid4().hex
         )
-    return current_user
+        scope.setdefault("state", {})["request_id"] = request_id
+        started = time.perf_counter()
+        status = [500]
+        path = scope.get("path", "")
+
+        async def send_secured(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                status["code"] = message["status"]
+                extra = [
+                    (b"x-request-id", request_id.encode()),
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"referrer-policy", b"no-referrer"),
+                    (b"cache-control", b"no-store"),
+                ]
+                if not path.startswith(("/docs", "/redoc", "/openapi.json")):
+                    extra.append(
+                        (
+                            b"content-security-policy",
+                            b"default-src 'none'; frame-ancestors 'none'",
+                        )
+                    )
+                if self.enable_hsts:
+                    extra.append(
+                        (
+                            b"strict-transport-security",
+                            b"max-age=31536000; includeSubDomains",
+                        )
+                    )
+                message["headers"] = list(message.get("headers", [])) + extra
+            await send(message)
+
+        try:
+            client = scope.get("client")
+            if path != "/health" and not self.limiter.allow(
+                client[0] if client else "unknown"
+            ):
+                await reject(
+                    send_secured,
+                    429,
+                    "Too many requests. Try again later",
+                    [(b"retry-after", b"60")],
+                )
+                return
+            length = headers.get(b"content-length")
+            if length is not None and (
+                not length.isdigit() or int(length) > self.max_bytes
+            ):
+                await reject(send_secured, 413, "Request body is too large")
+                return
+            await self.app(scope, receive, send_secured)
+        finally:
+            logger.info(
+                "request",
+                extra={
+                    "extra_fields": {
+                        "request_id": request_id,
+                        "method": scope.get("method"),
+                        "path": path,
+                        "status": status["code"],
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                    }
+                },
+            )
 
 
-def require_patrol_officer(
-    current_user: User = Depends(get_current_user),
-) -> User:
-
-    if current_user.role != UserRole.PATROL_OFFICER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Patrol officer privileges required",
-        )
-    return current_user
+def apply_security(app: FastAPI, settings: Settings) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "PATCH"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
+    )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+    app.add_middleware(
+        SecurityMiddleware,
+        settings=settings,
+        limiter=SlidingWindowLimiter(settings.api_rate_limit_per_minute, 60),
+    )
+    register_error_handlers(app)

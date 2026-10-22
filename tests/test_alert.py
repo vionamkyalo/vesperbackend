@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import jwt
@@ -12,7 +12,7 @@ from models.alert import Alert, AlertStatus, VerificationResult
 from models.alert_assignment import AssignmentStatus
 
 from core.config import get_settings
-from core.security import create_access_token
+from core.security import ACCESS_TOKEN, create_access_token
 from models.zone_light_reading import IngestionStatus
 from repositories.alert import AlertRepository
 from schemas.alert import (
@@ -68,9 +68,9 @@ def client(db_session):
 def headers_for():
 
     def _headers(user):
-        return {
-            "Authorization": f"Bearer {create_access_token(user.user_id, user.role)}"
-        }
+
+        token = create_access_token(user.user_id, user.role.value)
+        return {"Authorization": f"Bearer {token}"}
 
     return _headers
 
@@ -854,7 +854,23 @@ class TestAlertAccessControl:
         assert response.headers["www-authenticate"] == "Bearer"
 
     def test_expired_token_is_401(self, client, sample_coordinator):
-        token = create_access_token(sample_coordinator.user_id, expires_minutes=-1)
+        settings = get_settings()
+        now = datetime.now(timezone.utc)
+        token = jwt.encode(
+            {
+                "sub": str(sample_coordinator.user_id),
+                "type": ACCESS_TOKEN,
+                "role": sample_coordinator.role.value,
+                "iss": settings.jwt_issuer,
+                "aud": settings.jwt_audience,
+                "iat": now - timedelta(minutes=2),
+                "nbf": now - timedelta(minutes=2),
+                "exp": now - timedelta(minutes=1),
+                "jti": uuid.uuid4().hex,
+            },
+            settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+        )
         assert (
             client.get(
                 "/vesper/alerts", headers={"Authorization": f"Bearer {token}"}
@@ -871,7 +887,7 @@ class TestAlertAccessControl:
                 "exp": 9999999999,
             },
             "x" * 40,
-            algorithm=settings.JWT_ALGORITHM,
+            algorithm=settings.jwt_algorithm,
         )
         assert (
             client.get(
@@ -880,11 +896,12 @@ class TestAlertAccessControl:
             == 401
         )
 
-    def test_deactivated_account_is_403(self, client, headers_for, inactive_officer):
+    def test_deactivated_account_is_401(self, client, headers_for, inactive_officer):
+
         response = client.get(
             "/vesper/alerts/assigned/me", headers=headers_for(inactive_officer)
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @pytest.mark.parametrize("method, path, body", COORDINATOR_ONLY)
     def test_officer_forbidden_on_coordinator_routes(
