@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 class CatchCheckCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    catch_id: UUID
+    catch_id: UUID = Field(default_factory=uuid4)
     inspection_id: UUID
     rig_identifier: str = Field(min_length=1, max_length=50)
     rig_nights: int = Field(ge=1)

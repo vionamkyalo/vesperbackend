@@ -115,7 +115,6 @@ class TestCatchCheck:
 
     def test_catch_check_missing_inspection_id(self, db_session):
         check = CatchCheck(
-            catch_id=uuid.uuid4(),
             rig_identifier="KR-3001",
             rig_nights=3,
             catch_weight_kg=Decimal("100.00"),
@@ -232,6 +231,14 @@ class TestCatchCheckSchema:
         data = CatchCheckCreate(**valid_body(catch_weight_kg="0"))
         assert data.catch_weight_kg == Decimal("0")
 
+    def test_catch_id_generated_when_omitted(self):
+        body = valid_body()
+        body.pop("catch_id")
+
+        data = CatchCheckCreate(**body)
+
+        assert isinstance(data.catch_id, uuid.UUID)
+
     def test_optional_fields_can_be_omitted(self):
         body = valid_body()
         body.pop("type_of_fish")
@@ -256,7 +263,6 @@ class TestCatchCheckSchema:
             ("type_of_fish", "F" * 101),
             ("notes", "N" * 2001),
             ("checked_at", "2026-10-11T06:00:00"),
-            ("catch_id", "not-a-uuid"),
             ("synced_at", "2026-10-11T06:00:00Z"),
         ],
     )
@@ -267,7 +273,6 @@ class TestCatchCheckSchema:
     @pytest.mark.parametrize(
         "field",
         [
-            "catch_id",
             "inspection_id",
             "rig_identifier",
             "rig_nights",
@@ -600,6 +605,18 @@ class TestCatchCheckRouter:
         assert first.status_code == 201
         assert second.status_code == 201
         assert len(client.get(API, headers=headers).json()) == 1
+
+    def test_create_catch_check_without_catch_id(
+        self, client, sample_officer, landing_inspection
+    ):
+        body = valid_body(landing_inspection.inspection_id)
+        body.pop("catch_id")
+
+        response = client.post(API, json=body, headers=auth_headers(sample_officer))
+
+        assert response.status_code == 201
+
+        assert response.json()["catch_id"] is not None
 
     def test_create_catch_check_coordinator_forbidden(
         self, client, sample_coordinator, landing_inspection
