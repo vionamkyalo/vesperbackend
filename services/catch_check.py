@@ -86,7 +86,6 @@ class CatchCheckService:
         self._check_officer(user)
         self._check_future_time(payload.checked_at)
 
-        
         existing = catch_check_repository.get(db_session, payload.catch_id)
 
         if existing is not None:
