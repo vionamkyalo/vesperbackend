@@ -5,7 +5,7 @@ import uuid
 from urllib.request import urlopen
 
 from dotenv import load_dotenv
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from pydantic import ValidationError
 from shapely.geometry import shape
 from sqlalchemy.orm import Session
@@ -90,9 +90,12 @@ def check_json_upload(filename, content_type):
         )
 
 
-def parse_zone_file(content, filename, content_type):
-    check_json_upload(filename, content_type)
+def read_zone_upload(upload: UploadFile):
+    check_json_upload(upload.filename, upload.content_type)
+    return parse_zone_file(upload.file.read(MAX_ZONE_FILE_BYTES + 1))
 
+
+def parse_zone_file(content):
     if len(content) > MAX_ZONE_FILE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
@@ -230,19 +233,10 @@ class ZoneService:
                     )
 
     def import_zones(
-        self,
-        db: Session,
-        current_user: User,
-        content=None,
-        filename=None,
-        content_type=None,
+        self, db: Session, current_user: User, upload: UploadFile | None = None
     ):
         self.check_coordinator(current_user)
-        data = (
-            parse_zone_file(content, filename, content_type)
-            if content is not None
-            else load_zones()
-        )
+        data = read_zone_upload(upload) if upload is not None else load_zones()
         basins = load_basins()
         existing = {name for (name,) in db.query(Zone.name).all()}
         new_items = [item for item in data.zones if item.name not in existing]

@@ -13,7 +13,7 @@ from schemas.zone import (
     ZoneSettings,
     ZoneUpdate,
 )
-from services.zone import MAX_ZONE_FILE_BYTES, zone_service
+from services.zone import zone_service
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
@@ -38,16 +38,7 @@ def import_zones(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    if file is None:
-        return zone_service.import_zones(db, current_user)
-
-    return zone_service.import_zones(
-        db,
-        current_user,
-        file.file.read(MAX_ZONE_FILE_BYTES + 1),
-        file.filename,
-        file.content_type,
-    )
+    return zone_service.import_zones(db, current_user, file)
 
 
 @router.get("/{zone_id}", response_model=ZoneRead)

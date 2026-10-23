@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from models.user import User, UserRole
 from models.zone import Zone, ZoneType
 from models.zone_setting_history import ZoneSettingHistory
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from starlette.datastructures import Headers
 from core import security
 from database import get_db
 from repositories.zone import zone_repository
@@ -950,7 +951,9 @@ def zones_upload(data, name="zones.json", content_type="application/json"):
 
 
 def upload(db, user, content, name="zones.json", content_type="application/json"):
-    return zone_service.import_zones(db, user, content, name, content_type)
+    headers = Headers({"content-type": content_type} if content_type else {})
+    file = UploadFile(file=io.BytesIO(content), filename=name, headers=headers)
+    return zone_service.import_zones(db, user, file)
 
 
 class TestZoneUpload:
