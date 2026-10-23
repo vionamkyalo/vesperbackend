@@ -23,7 +23,7 @@ from services.user import user_service
 
 PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$dGVzdHNhbHQ$dGVzdGhhc2g"
 STRONG_PASSWORD = "Kariba-Patrol-2026"
-API = "/api/v1/users"
+API = "/api/users"
 
 
 def valid_body(**changes):
@@ -60,7 +60,7 @@ def auth_headers(user):
 def client(db_session):
     app = FastAPI()
     register_error_handlers(app)
-    app.include_router(user_router.router, prefix="/api/v1")
+    app.include_router(user_router.router, prefix="/api")
 
     def override_get_db():
         yield db_session
