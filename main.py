@@ -5,6 +5,8 @@ from core.config import get_settings
 from core.security import register_error_handlers
 from database import init_db
 from routers.auth import router as auth_router
+from routers.user import router as user_router
+from routers.zone_setting_history import router as zone_setting_history_router
 from routers.catch_check import router as catch_check_router
 from routers.inspection import router as inspection_router
 from routers.user import router as user_router
@@ -18,15 +20,12 @@ register_error_handlers(app)
 
 init_db()
 
-API_PREFIX = "/vesper"
-
-app.include_router(auth_router, prefix=API_PREFIX)
-app.include_router(user_router, prefix=API_PREFIX)
-app.include_router(zone_router, prefix=API_PREFIX)
-app.include_router(inspection_router, prefix=API_PREFIX)
-app.include_router(catch_check_router, prefix=API_PREFIX)
-# This router has no prefix of its own.
-app.include_router(violation_report_router, prefix=f"{API_PREFIX}/violation-reports")
+app.include_router(user_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(zone.router, prefix="/api")
+app.include_router(catch_check_router, prefix="/api")
+app.include_router(violation_report_router, prefix="/api/violation-reports")
+app.include_router(zone_setting_history_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
