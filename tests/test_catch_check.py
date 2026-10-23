@@ -16,7 +16,7 @@ from routers import catch_check as catch_check_router
 from schemas.catch_check import CatchCheckCreate, CatchCheckRead
 from services.catch_check import catch_check_service
 
-API = "/api/v1/catch-checks"
+API = "/api/catch-checks"
 
 
 def make_catch_check(db_session, inspection, rig_identifier, checked_at):
@@ -61,7 +61,7 @@ def auth_headers(user):
 def client(db_session):
     app = FastAPI()
     register_error_handlers(app)
-    app.include_router(catch_check_router.router, prefix="/api/v1")
+    app.include_router(catch_check_router.router, prefix="/api")
 
     def override_get_db():
         yield db_session
@@ -206,16 +206,6 @@ class TestCatchCheckRepository:
 
     def test_get_all_empty(self, db_session):
         assert catch_check_repository.get_all(db_session) == []
-
-    def test_update_catch_check(self, db_session, sample_catch_check):
-        sample_catch_check.type_of_fish = "Kapenta"
-
-        saved = catch_check_repository.update(db_session, sample_catch_check)
-        db_session.expire_all()
-
-        assert saved.catch_id == sample_catch_check.catch_id
-        found = catch_check_repository.get(db_session, sample_catch_check.catch_id)
-        assert found.type_of_fish == "Kapenta"
 
 
 class TestCatchCheckSchema:

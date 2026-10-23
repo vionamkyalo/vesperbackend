@@ -51,7 +51,5 @@ class CatchCheckRepository:
             .all()
         )
 
-   
-
 
 catch_check_repository = CatchCheckRepository()
