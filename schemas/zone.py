@@ -8,7 +8,6 @@ from pydantic import (
     ConfigDict,
     Field,
     PlainSerializer,
-    field_validator,
 )
 
 from models.zone import ZoneType
@@ -17,39 +16,12 @@ DecimalNumber = Annotated[
     Decimal, PlainSerializer(float, return_type=float, when_used="json")
 ]
 
-MAX_POLYGON_POSITIONS = 2000
-
 
 class GeoJSONPolygon(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["Polygon"]
     coordinates: List[List[List[float]]] = Field(min_length=1, max_length=20)
-
-    @field_validator("coordinates")
-    @classmethod
-    def check_rings(cls, rings):
-        total = 0
-        for ring in rings:
-            if len(ring) < 4:
-                raise ValueError("Each ring needs at least 4 positions")
-            if ring[0] != ring[-1]:
-                raise ValueError(
-                    "Each ring must be closed (first and last positions equal)"
-                )
-            for position in ring:
-                if len(position) != 2:
-                    raise ValueError("Positions must be [longitude, latitude]")
-                longitude, latitude = position
-                if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
-                    raise ValueError(
-                        "Position is outside valid longitude/latitude ranges"
-                    )
-            total += len(ring)
-
-        if total > MAX_POLYGON_POSITIONS:
-            raise ValueError(f"Polygon has more than {MAX_POLYGON_POSITIONS} positions")
-        return rings
 
 
 class BasinRead(BaseModel):

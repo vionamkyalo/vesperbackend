@@ -482,31 +482,16 @@ class TestZoneRepository:
 
 
 class TestZoneSchema:
-    @pytest.mark.parametrize(
-        "boundary",
-        [
-            {"type": "Point", "coordinates": [[[28.0, -16.9]]]},
-            {
-                "type": "Polygon",
-                "coordinates": [[[28.0, -16.9], [28.1, -16.9], [28.0, -16.9]]],
-            },
-            {
-                "type": "Polygon",
-                "coordinates": [
-                    [[28.0, -16.9], [28.1, -16.9], [28.1, -16.8], [28.0, -16.8]]
-                ],
-            },
-            {
-                "type": "Polygon",
-                "coordinates": [
-                    [[200.0, -16.9], [28.1, -16.9], [28.1, -16.8], [200.0, -16.9]]
-                ],
-            },
-        ],
-    )
-    def test_geojson_polygon_rejects_bad_boundary(self, boundary):
+    def test_geojson_polygon_rejects_wrong_type(self):
         with pytest.raises(ValidationError):
-            GeoJSONPolygon(**boundary)
+            GeoJSONPolygon(type="Point", coordinates=[[[28.0, -16.9]]])
+
+    def test_geojson_polygon_has_no_rules(self):
+        open_ring = [[28.0, -16.9], [28.1, -16.9], [28.1, -16.8], [28.0, -16.8]]
+
+        data = GeoJSONPolygon(type="Polygon", coordinates=[open_ring])
+
+        assert data.coordinates == [open_ring]
 
     def test_zone_settings_valid(self):
         data = ZoneSettings(**settings_body())
@@ -1079,3 +1064,116 @@ class TestZoneUpload:
 
         assert response.status_code == 415
         assert response.json()["detail"] == "Upload the zones as a .json file."
+
+
+class TestZonePolygonRules:
+    @pytest.mark.parametrize(
+        "rings, message",
+        [
+            (
+                [[[28.0, -16.9], [28.1, -16.9], [28.0, -16.9]]],
+                "at least 4 positions",
+            ),
+            (
+                [[[28.0, -16.9], [28.1, -16.9], [28.1, -16.8], [28.0, -16.8]]],
+                "end where it starts",
+            ),
+            (
+                [[[200.0, -16.9], [28.1, -16.9], [28.1, -16.8], [200.0, -16.9]]],
+                "outside valid longitude or latitude",
+            ),
+            (
+                [
+                    [
+                        [28.0, -16.9, 5.0],
+                        [28.1, -16.9],
+                        [28.1, -16.8],
+                        [28.0, -16.9, 5.0],
+                    ]
+                ],
+                "[longitude, latitude]",
+            ),
+        ],
+    )
+    def test_polygon_problem(self, rings, message):
+        assert message in zone_module.polygon_problem(
+            {"type": "Polygon", "coordinates": rings}
+        )
+
+    def test_polygon_problem_too_many_positions(self):
+        ring = [[28.0 + index * 0.0001, -16.9] for index in range(2001)] + [
+            [28.0, -16.9]
+        ]
+
+        assert "more than 2000" in zone_module.polygon_problem(
+            {"type": "Polygon", "coordinates": [ring]}
+        )
+
+    def test_polygon_problem_valid(self):
+        assert zone_module.polygon_problem(SANYATI_POLYGON) is None
+
+    def test_update_zone_open_ring(self, db_session, sample_coordinator, sample_zone):
+        open_ring = {
+            "type": "Polygon",
+            "coordinates": [
+                [[28.79, -16.685], [28.85, -16.685], [28.85, -16.625], [28.79, -16.625]]
+            ],
+        }
+
+        with pytest.raises(HTTPException) as error:
+            zone_service.update_zone(
+                db_session,
+                sample_coordinator,
+                sample_zone.zone_id,
+                ZoneUpdate(boundary=open_ring),
+            )
+
+        assert error.value.status_code == 400
+        assert "end where it starts" in error.value.detail
+
+    def test_router_update_zone_open_ring(
+        self, client, sample_coordinator, sample_zone
+    ):
+        response = client.patch(
+            f"{API}/{sample_zone.zone_id}",
+            json={
+                "boundary": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [28.79, -16.685],
+                            [28.85, -16.685],
+                            [28.85, -16.625],
+                            [28.79, -16.625],
+                        ]
+                    ],
+                }
+            },
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert response.status_code == 400
+
+    def test_import_zone_with_open_ring(
+        self, db_session, sample_coordinator, monkeypatch, tmp_path
+    ):
+        data = json.loads(json.dumps(TEST_ZONES))
+        data["zones"][0]["boundary"]["coordinates"][0].pop()
+        monkeypatch.setenv("ZONES_SOURCE", write_source(tmp_path, "z.json", data))
+
+        with pytest.raises(HTTPException) as error:
+            zone_service.import_zones(db_session, sample_coordinator)
+
+        assert error.value.status_code == 400
+        assert error.value.detail.startswith("Zone 1:")
+        assert db_session.query(Zone).count() == 0
+
+    def test_basins_source_with_bad_polygon(self, monkeypatch, tmp_path):
+        data = json.loads(json.dumps(TEST_BASINS))
+        data["basins"][0]["boundary"]["coordinates"][0].pop()
+        monkeypatch.setenv("BASINS_SOURCE", write_source(tmp_path, "b.json", data))
+
+        with pytest.raises(HTTPException) as error:
+            load_basins()
+
+        assert error.value.status_code == 503

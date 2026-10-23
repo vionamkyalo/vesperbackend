@@ -27,6 +27,7 @@ OPTIONAL_UPDATE_FIELDS = ["boat_cap", "closure_start", "closure_end"]
 SOURCE_TIMEOUT_SECONDS = 15
 MAX_ZONE_FILE_BYTES = 1_000_000
 JSON_CONTENT_TYPES = {"application/json", "text/json"}
+MAX_POLYGON_POSITIONS = 2000
 
 
 def read_source(variable):
@@ -65,10 +66,39 @@ def load_source(variable, schema):
         )
 
 
+def polygon_problem(boundary):
+    total = 0
+    for ring in boundary["coordinates"]:
+        if len(ring) < 4:
+            return "Each ring of the boundary needs at least 4 positions."
+        if ring[0] != ring[-1]:
+            return "Each ring of the boundary must end where it starts."
+        for position in ring:
+            if len(position) != 2:
+                return "Boundary positions must be [longitude, latitude]."
+            longitude, latitude = position
+            if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
+                return "A boundary position is outside valid longitude or latitude."
+        total += len(ring)
+
+    if total > MAX_POLYGON_POSITIONS:
+        return f"The boundary has more than {MAX_POLYGON_POSITIONS} positions."
+    return None
+
+
 def load_basins():
-    return [
+    basins = [
         basin.model_dump() for basin in load_source("BASINS_SOURCE", BasinSource).basins
     ]
+    for basin in basins:
+        problem = polygon_problem(basin["boundary"])
+        if problem is not None:
+            logger.error(f"BASINS_SOURCE basin {basin['name']} is invalid: {problem}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The data in BASINS_SOURCE is not in the expected format.",
+            )
+    return basins
 
 
 def load_zones():
@@ -195,6 +225,11 @@ class ZoneService:
         )
 
     def check_boundary(self, db: Session, basin, boundary, zone_id=None, basins=None):
+        problem = polygon_problem(boundary)
+        if problem is not None:
+            logger.warning(f"zone refused: {problem}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=problem)
+
         zone = shape(boundary)
 
         if not zone.is_valid:
