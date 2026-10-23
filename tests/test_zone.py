@@ -861,8 +861,12 @@ class TestZoneImport:
     def test_import_zones_twice(self, db_session, sample_coordinator):
         zone_service.import_zones(db_session, sample_coordinator)
 
-        assert zone_service.import_zones(db_session, sample_coordinator) == []
-        assert db_session.query(Zone).count() == 3
+        with pytest.raises(HTTPException) as error:
+            zone_service.import_zones(db_session, sample_coordinator)
+
+        assert error.value.status_code == 409
+        assert error.value.detail == "All zones in the file already exist."
+        assert db_session.query(Zone).count() == len(TEST_ZONES["zones"])
 
     def test_import_zones_officer_forbidden(self, db_session, sample_officer):
         with pytest.raises(HTTPException) as error:
@@ -916,10 +920,10 @@ class TestZoneImport:
         first = client.post(f"{API}/import", headers=headers)
         second = client.post(f"{API}/import", headers=headers)
 
-        assert first.status_code == 200
-        assert [zone["name"] for zone in first.json()] == ["Zone 1", "Zone 2", "Zone 3"]
-        assert second.status_code == 200
-        assert second.json() == []
+        assert first.status_code == 201
+        assert len(first.json()) == len(TEST_ZONES["zones"])
+        assert second.status_code == 409
+        assert second.json()["detail"] == "All zones in the file already exist."
 
     def test_router_import_zones_officer_forbidden(self, client, sample_officer):
         response = client.post(f"{API}/import", headers=auth_headers(sample_officer))
@@ -990,10 +994,15 @@ class TestZoneUpload:
         second = client.post(
             f"{API}/import", files=zones_upload(TEST_ZONES), headers=headers
         )
+        third = client.post(
+            f"{API}/import", files=zones_upload(TEST_ZONES), headers=headers
+        )
 
-        assert first.status_code == 200
-        assert len(first.json()) == 3
-        assert second.json() == []
+        assert first.status_code == 201
+        assert len(first.json()) == len(TEST_ZONES["zones"])
+        assert second.status_code == 409
+        assert second.json()["detail"] == "All zones in the file already exist."
+        assert third.status_code == 409
 
     def test_router_upload_not_json(self, client, sample_coordinator):
         response = client.post(
@@ -1018,8 +1027,8 @@ class TestZoneUpload:
             f"{API}/import", headers=auth_headers(sample_coordinator)
         )
 
-        assert response.status_code == 200
-        assert len(response.json()) == 3
+        assert response.status_code == 201
+        assert len(response.json()) == len(TEST_ZONES["zones"])
 
     @pytest.mark.parametrize(
         "name, content_type",

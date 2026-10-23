@@ -276,6 +276,13 @@ class ZoneService:
         existing = {name for (name,) in db.query(Zone.name).all()}
         new_items = [item for item in data.zones if item.name not in existing]
 
+        if not new_items:
+            logger.warning("zone import refused: every zone in the file already exists")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="All zones in the file already exist.",
+            )
+
         for item in new_items:
             try:
                 self.check_boundary(
@@ -304,6 +311,10 @@ class ZoneService:
                 updated_by=current_user.user_id,
             )
             created.append(zone_repository.create(db, zone))
+
+        db.commit()
+        for zone in created:
+            db.refresh(zone)
 
         logger.info(
             f"{len(created)} zone(s) imported by {current_user.user_id}, "

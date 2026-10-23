@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -32,7 +32,9 @@ def list_basins(current_user: User = Depends(require_any_user)):
     return zone_service.list_basins(current_user)
 
 
-@router.post("/import", response_model=List[ZoneRead])
+@router.post(
+    "/import", response_model=List[ZoneRead], status_code=status.HTTP_201_CREATED
+)
 def import_zones(
     file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
