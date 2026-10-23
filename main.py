@@ -8,7 +8,6 @@ from core.security import register_error_handlers
 from database import init_db
 from routers.auth import router as auth_router
 from routers.user import router as user_router
-from routers.zone import router as zone_router
 from routers.zone_setting_history import router as zone_setting_history_router
 from routers.catch_check import router as catch_check_router
 from routers.violation_report import router as violation_report_router
