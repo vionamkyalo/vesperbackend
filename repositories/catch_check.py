@@ -51,15 +51,7 @@ class CatchCheckRepository:
             .all()
         )
 
-    def update(
-        self,
-        db_session: Session,
-        catch_check: CatchCheck,
-    ) -> CatchCheck:
-        db_session.add(catch_check)
-        db_session.commit()
-        db_session.refresh(catch_check)
-        return catch_check
+   
 
 
 catch_check_repository = CatchCheckRepository()

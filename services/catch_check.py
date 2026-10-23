@@ -86,7 +86,7 @@ class CatchCheckService:
         self._check_officer(user)
         self._check_future_time(payload.checked_at)
 
-        # Repeated requests with the same catch ID are idempotent.
+        
         existing = catch_check_repository.get(db_session, payload.catch_id)
 
         if existing is not None:
@@ -155,7 +155,6 @@ class CatchCheckService:
         try:
             return catch_check_repository.create(db_session, catch_check)
         except IntegrityError:
-            # Another request saved the same catch_id first (offline retry race).
             db_session.rollback()
             existing = catch_check_repository.get(db_session, payload.catch_id)
             if existing is not None and existing.inspection_id == payload.inspection_id:
