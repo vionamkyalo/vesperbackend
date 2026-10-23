@@ -16,6 +16,7 @@ from models.zone_setting_history import ZoneSettingHistory  # noqa: F401
 from routers.auth import router as auth_router
 from routers.user import router as user_router
 from routers.violation_report import router as violation_report_router
+from routers.zone_baseline import router as zone_baseline_router
 
 settings = Settings()
 
@@ -26,6 +27,7 @@ init_db()
 app.include_router(user_router)
 app.include_router(auth_router, prefix="/api")
 app.include_router(violation_report_router, prefix="/violation-reports")
+app.include_router(zone_baseline_router, prefix="/api/v1")
 
 app.add_middleware(
     CORSMiddleware,
