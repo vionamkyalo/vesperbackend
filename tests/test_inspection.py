@@ -227,7 +227,7 @@ class TestInspection:
         assert sample_catch_check in landing_inspection.catch_checks
 
 
-API = "/vesper/inspections"
+API = "/api/inspections"
 
 
 def valid_body(zone_id=None, alert_id=None, **changes):
@@ -298,7 +298,7 @@ def client(db_session):
     app = FastAPI()
     if REAL_SECURITY:
         security.register_error_handlers(app)
-    app.include_router(inspection_router.router, prefix="/vesper")
+    app.include_router(inspection_router.router, prefix="/api")
 
     def override_get_db():
         yield db_session
