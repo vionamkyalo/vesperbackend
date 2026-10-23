@@ -18,7 +18,7 @@ register_error_handlers(app)
 
 init_db()
 
-API_PREFIX = "/api"
+API_PREFIX = "/vesper"
 
 app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(user_router, prefix=API_PREFIX)
