@@ -21,4 +21,5 @@ dev_zone_server.py.backup
 dev_zone_server.py.before_seed_fix
 postman_zone.db
 dev_test.db
+.dev_zone_server.py
 dev_history_server.py
