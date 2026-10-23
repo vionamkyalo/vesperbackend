@@ -13,3 +13,5 @@ htmlcov/
 *.sqlite
 *.sqlite3
 .DS_Store
+.dev_zone_server.py
+dev_history_server.py
