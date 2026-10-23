@@ -445,17 +445,17 @@ class TestAlert:
 
 
 COORDINATOR_ONLY = [
-    ("post", "/vesper/alerts", {}),
-    ("get", "/vesper/alerts", None),
-    ("patch", "/vesper/alerts/{id}/status", {"status": "dismissed"}),
+    ("post", "/api/alerts", {}),
+    ("get", "/api/alerts", None),
+    ("patch", "/api/alerts/{id}/status", {"status": "dismissed"}),
     (
         "patch",
-        "/vesper/alerts/{id}/verification",
+        "/api/alerts/{id}/verification",
         {"verification_result": "no_activity"},
     ),
 ]
-OFFICER_ONLY = [("get", "/vesper/alerts/assigned/me", None)]
-ANY_ROLE = [("get", "/vesper/alerts/{id}", None)]
+OFFICER_ONLY = [("get", "/api/alerts/assigned/me", None)]
+ANY_ROLE = [("get", "/api/alerts/{id}", None)]
 
 SQUARE = {
     "type": "Polygon",
@@ -873,7 +873,7 @@ class TestAlertAccessControl:
         )
         assert (
             client.get(
-                "/vesper/alerts", headers={"Authorization": f"Bearer {token}"}
+                "/api/alerts", headers={"Authorization": f"Bearer {token}"}
             ).status_code
             == 401
         )
@@ -891,7 +891,7 @@ class TestAlertAccessControl:
         )
         assert (
             client.get(
-                "/vesper/alerts", headers={"Authorization": f"Bearer {bad}"}
+                "/api/alerts", headers={"Authorization": f"Bearer {bad}"}
             ).status_code
             == 401
         )
@@ -899,7 +899,7 @@ class TestAlertAccessControl:
     def test_deactivated_account_is_401(self, client, headers_for, inactive_officer):
 
         response = client.get(
-            "/vesper/alerts/assigned/me", headers=headers_for(inactive_officer)
+            "/api/alerts/assigned/me", headers=headers_for(inactive_officer)
         )
         assert response.status_code == 401
 
@@ -919,7 +919,7 @@ class TestAlertAccessControl:
 class TestAlertEndpoints:
     def test_create_alert(self, client, coordinator_headers, alert_payload):
         response = client.post(
-            "/vesper/alerts", json=alert_payload, headers=coordinator_headers
+            "/api/alerts", json=alert_payload, headers=coordinator_headers
         )
         assert response.status_code == 201
         data = response.json()
@@ -931,13 +931,13 @@ class TestAlertEndpoints:
     def test_duplicate_create_is_409(self, client, coordinator_headers, alert_payload):
         assert (
             client.post(
-                "/vesper/alerts", json=alert_payload, headers=coordinator_headers
+                "/api/alerts", json=alert_payload, headers=coordinator_headers
             ).status_code
             == 201
         )
         assert (
             client.post(
-                "/vesper/alerts", json=alert_payload, headers=coordinator_headers
+                "/api/alerts", json=alert_payload, headers=coordinator_headers
             ).status_code
             == 409
         )
@@ -946,7 +946,7 @@ class TestAlertEndpoints:
         alert_payload["confidence"] = 2
         assert (
             client.post(
-                "/vesper/alerts", json=alert_payload, headers=coordinator_headers
+                "/api/alerts", json=alert_payload, headers=coordinator_headers
             ).status_code
             == 422
         )
@@ -954,18 +954,16 @@ class TestAlertEndpoints:
     def test_list_alerts_and_page_limit(
         self, client, coordinator_headers, sample_alert
     ):
-        body = client.get("/vesper/alerts", headers=coordinator_headers).json()
+        body = client.get("/api/alerts", headers=coordinator_headers).json()
         assert body["total"] == 1
         assert (
-            client.get(
-                "/vesper/alerts?limit=101", headers=coordinator_headers
-            ).status_code
+            client.get("/api/alerts?limit=101", headers=coordinator_headers).status_code
             == 422
         )
 
     def test_get_alert(self, client, coordinator_headers, sample_alert):
         response = client.get(
-            f"/vesper/alerts/{sample_alert.alert_id}", headers=coordinator_headers
+            f"/api/alerts/{sample_alert.alert_id}", headers=coordinator_headers
         )
         assert response.status_code == 200
         assert response.json()["alert_id"] == str(sample_alert.alert_id)
@@ -978,13 +976,13 @@ class TestAlertEndpoints:
         sample_alert,
         sample_assignment,
     ):
-        url = f"/vesper/alerts/{sample_alert.alert_id}"
+        url = f"/api/alerts/{sample_alert.alert_id}"
         assert client.get(url, headers=officer_headers).status_code == 200
         assert client.get(url, headers=second_officer_headers).status_code == 403
 
     def test_dismiss_alert(self, client, coordinator_headers, sample_alert):
         response = client.patch(
-            f"/vesper/alerts/{sample_alert.alert_id}/status",
+            f"/api/alerts/{sample_alert.alert_id}/status",
             json={"status": "dismissed"},
             headers=coordinator_headers,
         )
@@ -994,7 +992,7 @@ class TestAlertEndpoints:
     def test_unknown_alert_is_404(self, client, coordinator_headers):
         assert (
             client.get(
-                f"/vesper/alerts/{uuid.uuid4()}", headers=coordinator_headers
+                f"/api/alerts/{uuid.uuid4()}", headers=coordinator_headers
             ).status_code
             == 404
         )
@@ -1010,7 +1008,7 @@ class TestAlertEndpoints:
         sample_coordinator,
     ):
         alert_id = client.post(
-            "/vesper/alerts", json=alert_payload, headers=coordinator_headers
+            "/api/alerts", json=alert_payload, headers=coordinator_headers
         ).json()["alert_id"]
 
         alert = db_session.get(Alert, uuid.UUID(alert_id))
@@ -1018,7 +1016,7 @@ class TestAlertEndpoints:
         alert.assigned_by = sample_coordinator.user_id
         db_session.commit()
 
-        mine = client.get("/vesper/alerts/assigned/me", headers=officer_headers).json()
+        mine = client.get("/api/alerts/assigned/me", headers=officer_headers).json()
         assert [a["alert_id"] for a in mine["items"]] == [alert_id]
 
         for path, body in [
@@ -1027,7 +1025,7 @@ class TestAlertEndpoints:
             ("status", {"status": "closed"}),
         ]:
             response = client.patch(
-                f"/vesper/alerts/{alert_id}/{path}",
+                f"/api/alerts/{alert_id}/{path}",
                 json=body,
                 headers=coordinator_headers,
             )

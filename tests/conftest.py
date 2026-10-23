@@ -264,7 +264,10 @@ def sample_catch_check(db_session, landing_inspection):
         inspection_id=landing_inspection.inspection_id,
         rig_identifier="KR-2001",
         rig_nights=3,
+        type_of_fish="Tilapia",
         catch_weight_kg=Decimal("450.00"),
+        catch_per_rig_night=Decimal("150.00"),
+        notes="Routine nightly catch check",
         checked_at=datetime.now(timezone.utc) - timedelta(minutes=20),
     )
     db_session.add(check)
