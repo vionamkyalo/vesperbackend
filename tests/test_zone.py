@@ -28,7 +28,7 @@ from services.zone import (
 )
 
 
-API = "/vesper/zones"
+API = "/api/zones"
 
 ZONE_POLYGON = {
     "type": "Polygon",
@@ -412,7 +412,7 @@ def client(db_session):
     app = FastAPI()
     if REAL_SECURITY:
         security.register_error_handlers(app)
-    app.include_router(zone_router.router, prefix="/vesper")
+    app.include_router(zone_router.router, prefix="/api")
 
     def override_get_db():
         yield db_session
