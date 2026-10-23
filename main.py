@@ -17,10 +17,12 @@ from routers.auth import router as auth_router
 from routers.user import router as user_router
 from routers.catch_check import router as catch_check_router
 from routers.violation_report import router as violation_report_router
+from core.security import register_error_handlers
 
 settings = Settings()
 
 app = FastAPI(title="Vesper", version="0.1.0")
+register_error_handlers(app)
 
 init_db()
 
