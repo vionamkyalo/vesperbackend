@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import Settings
+from core.security import register_error_handlers
+
 from database import init_db
 from models.alert import Alert  # noqa: F401
 from models.alert_assignment import AlertAssignment  # noqa: F401
@@ -21,6 +23,8 @@ from routers.officer_location import router as location_officer_router
 settings = Settings()
 
 app = FastAPI(title="Vesper", version="0.1.0")
+
+register_error_handlers(app)
 
 init_db()
 

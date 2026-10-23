@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
-    cors_allowed_origins: List[str] = ["http://localhost:3000"]
-    allowed_hosts: List[str] = ["localhost", "127.0.0.1", "testserver"]
+    cors_allowed_origins: list[str] = ["http://localhost:3000"]
+    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     max_request_bytes: int = 1_000_000
     api_rate_limit_per_minute: int = 120
     login_max_attempts: int = 5
@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     assignment_report_timeout_minutes: int = 30
     sync_max_batch: int = 200
     sync_max_clock_skew_minutes: int = 10
+
+    location_retention_days: int = Field(default=90, gt=0)
+    max_officer_speed_kmh: float = Field(default=120.0, gt=0)
+    location_clock_skew_minutes: int = Field(default=5, ge=0)
+    default_arrival_radius_m: float = Field(default=500.0, gt=0)
 
     baseline_lookback_nights: int = 90
     baseline_min_nights: int = 5
@@ -95,6 +100,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 "moon_dark_max_illumination must be lower than moon_partial_max_illumination"
             )
+
         if self.seed_coordinator_email:
             missing = [
                 name
@@ -103,6 +109,7 @@ class Settings(BaseSettings):
             ]
             if missing:
                 raise ValueError("Seed coordinator is missing: " + ", ".join(missing))
+
         if self.is_production:
             if "*" in self.cors_allowed_origins:
                 raise ValueError("Wildcard CORS origins are not allowed in production")
@@ -112,6 +119,7 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Use migrations in production, not create_tables_on_startup"
                 )
+
         return self
 
 
@@ -120,7 +128,7 @@ def get_settings() -> Settings:
     return Settings()
 
 
-SENSITIVE_KEYS = {
+SENSITIVE_KEYS = [
     "password",
     "password_hash",
     "token",
@@ -128,7 +136,7 @@ SENSITIVE_KEYS = {
     "refresh_token",
     "authorization",
     "secret",
-}
+]
 
 
 def redact(data: dict) -> dict:
