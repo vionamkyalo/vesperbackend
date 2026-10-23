@@ -25,6 +25,8 @@ REQUIRED_UPDATE_FIELDS = ["name", "basin", "zone_type", "is_active"]
 OPTIONAL_UPDATE_FIELDS = ["boat_cap", "closure_start", "closure_end"]
 
 SOURCE_TIMEOUT_SECONDS = 15
+MAX_ZONE_FILE_BYTES = 1_000_000
+JSON_CONTENT_TYPES = {"application/json", "text/json"}
 
 
 def read_source(variable):
@@ -71,6 +73,51 @@ def load_basins():
 
 def load_zones():
     return load_source("ZONES_SOURCE", ZoneSource)
+
+
+def check_json_upload(filename, content_type):
+    media_type = (content_type or "").split(";")[0].strip().lower()
+    if (
+        not (filename or "").lower().endswith(".json")
+        or media_type not in JSON_CONTENT_TYPES
+    ):
+        logger.warning(
+            f"zone import refused: upload {filename} with type {content_type} is not JSON"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Upload the zones as a .json file.",
+        )
+
+
+def parse_zone_file(content, filename, content_type):
+    check_json_upload(filename, content_type)
+
+    if len(content) > MAX_ZONE_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="The zones file is too large.",
+        )
+
+    try:
+        data = json.loads(content)
+    except ValueError:
+        logger.warning("zone import refused: uploaded file is not JSON")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file is not valid JSON.",
+        )
+
+    try:
+        return ZoneSource.model_validate(data)
+    except ValidationError as error:
+        logger.warning(
+            f"zone import refused: uploaded file has the wrong format: {error}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file is not in the expected zones format.",
+        )
 
 
 class ZoneService:
@@ -182,9 +229,20 @@ class ZoneService:
                         detail=f"{name} overlaps {other_name} in ZONES_SOURCE.",
                     )
 
-    def import_zones(self, db: Session, current_user: User):
+    def import_zones(
+        self,
+        db: Session,
+        current_user: User,
+        content=None,
+        filename=None,
+        content_type=None,
+    ):
         self.check_coordinator(current_user)
-        data = load_zones()
+        data = (
+            parse_zone_file(content, filename, content_type)
+            if content is not None
+            else load_zones()
+        )
         basins = load_basins()
         existing = {name for (name,) in db.query(Zone.name).all()}
         new_items = [item for item in data.zones if item.name not in existing]

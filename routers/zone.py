@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -13,7 +13,7 @@ from schemas.zone import (
     ZoneSettings,
     ZoneUpdate,
 )
-from services.zone import zone_service
+from services.zone import MAX_ZONE_FILE_BYTES, zone_service
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 
@@ -34,10 +34,20 @@ def list_basins(current_user: User = Depends(require_any_user)):
 
 @router.post("/import", response_model=List[ZoneRead])
 def import_zones(
+    file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return zone_service.import_zones(db, current_user)
+    if file is None:
+        return zone_service.import_zones(db, current_user)
+
+    return zone_service.import_zones(
+        db,
+        current_user,
+        file.file.read(MAX_ZONE_FILE_BYTES + 1),
+        file.filename,
+        file.content_type,
+    )
 
 
 @router.get("/{zone_id}", response_model=ZoneRead)

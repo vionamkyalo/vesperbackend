@@ -19,7 +19,12 @@ from database import get_db
 from repositories.zone import zone_repository
 from schemas.zone import GeoJSONPolygon, ZoneRead, ZoneSettings, ZoneUpdate
 from services import zone as zone_module
-from services.zone import load_basins, load_zones, zone_service
+from services.zone import (
+    MAX_ZONE_FILE_BYTES,
+    load_basins,
+    load_zones,
+    zone_service,
+)
 
 
 API = "/vesper/zones"
@@ -937,3 +942,137 @@ class TestZoneImport:
 
     def test_router_import_zones_requires_login(self, client):
         assert client.post(f"{API}/import").status_code == 401
+
+
+def zones_upload(data, name="zones.json", content_type="application/json"):
+    body = data if isinstance(data, (bytes, str)) else json.dumps(data)
+    return {"file": (name, body, content_type)}
+
+
+def upload(db, user, content, name="zones.json", content_type="application/json"):
+    return zone_service.import_zones(db, user, content, name, content_type)
+
+
+class TestZoneUpload:
+    def test_import_uploaded_file(self, db_session, sample_coordinator, monkeypatch):
+        monkeypatch.delenv("ZONES_SOURCE")
+        content = json.dumps(TEST_ZONES).encode("utf-8")
+
+        created = upload(db_session, sample_coordinator, content)
+
+        assert [zone.name for zone in created] == ["Zone 1", "Zone 2", "Zone 3"]
+
+    def test_uploaded_file_not_json(self, db_session, sample_coordinator):
+        with pytest.raises(HTTPException) as error:
+            upload(db_session, sample_coordinator, b"not json")
+
+        assert error.value.status_code == 400
+        assert "valid JSON" in error.value.detail
+
+    def test_uploaded_file_wrong_format(self, db_session, sample_coordinator):
+        with pytest.raises(HTTPException) as error:
+            upload(db_session, sample_coordinator, json.dumps({"zones": []}).encode())
+
+        assert error.value.status_code == 400
+        assert "expected zones format" in error.value.detail
+
+    def test_uploaded_file_too_large(self, db_session, sample_coordinator):
+        with pytest.raises(HTTPException) as error:
+            upload(db_session, sample_coordinator, b" " * (MAX_ZONE_FILE_BYTES + 1))
+
+        assert error.value.status_code == 413
+
+    def test_uploaded_zone_outside_basin(self, db_session, sample_coordinator):
+        data = json.loads(json.dumps(TEST_ZONES))
+        data["zones"][0]["basin"] = "Binga"
+
+        with pytest.raises(HTTPException) as error:
+            upload(db_session, sample_coordinator, json.dumps(data).encode())
+
+        assert error.value.status_code == 400
+        assert error.value.detail.startswith("Zone 1:")
+        assert db_session.query(Zone).count() == 0
+
+    def test_router_upload(self, client, sample_coordinator):
+        headers = auth_headers(sample_coordinator)
+
+        first = client.post(
+            f"{API}/import", files=zones_upload(TEST_ZONES), headers=headers
+        )
+        second = client.post(
+            f"{API}/import", files=zones_upload(TEST_ZONES), headers=headers
+        )
+
+        assert first.status_code == 200
+        assert len(first.json()) == 3
+        assert second.json() == []
+
+    def test_router_upload_not_json(self, client, sample_coordinator):
+        response = client.post(
+            f"{API}/import",
+            files=zones_upload("not json"),
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert response.status_code == 400
+
+    def test_router_upload_officer_forbidden(self, client, sample_officer):
+        response = client.post(
+            f"{API}/import",
+            files=zones_upload(TEST_ZONES),
+            headers=auth_headers(sample_officer),
+        )
+
+        assert response.status_code == 403
+
+    def test_router_without_file_uses_source(self, client, sample_coordinator):
+        response = client.post(
+            f"{API}/import", headers=auth_headers(sample_coordinator)
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 3
+
+    @pytest.mark.parametrize(
+        "name, content_type",
+        [
+            ("zones.txt", "application/json"),
+            ("zones.csv", "text/csv"),
+            ("zones.json", "text/plain"),
+            ("zones.json", "application/octet-stream"),
+            ("zones", None),
+        ],
+    )
+    def test_upload_must_be_json(
+        self, db_session, sample_coordinator, name, content_type
+    ):
+        content = json.dumps(TEST_ZONES).encode("utf-8")
+
+        with pytest.raises(HTTPException) as error:
+            upload(db_session, sample_coordinator, content, name, content_type)
+
+        assert error.value.status_code == 415
+        assert db_session.query(Zone).count() == 0
+
+    def test_upload_json_with_charset(self, db_session, sample_coordinator):
+        content = json.dumps(TEST_ZONES).encode("utf-8")
+
+        created = upload(
+            db_session,
+            sample_coordinator,
+            content,
+            "ZONES.JSON",
+            "application/json; charset=utf-8",
+        )
+
+        assert len(created) == 3
+
+    def test_router_upload_text_file(self, client, sample_coordinator):
+        response = client.post(
+            f"{API}/import",
+            files=zones_upload(TEST_ZONES, "zones.txt", "text/plain"),
+            headers=auth_headers(sample_coordinator),
+        )
+
+        assert response.status_code == 415
+        assert response.json()["detail"] == "Upload the zones as a .json file."
