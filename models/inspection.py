@@ -1,4 +1,5 @@
 import enum
+import uuid
 
 from sqlalchemy import Column, ForeignKey, Integer, Numeric, Text, Uuid
 from sqlalchemy.orm import relationship
@@ -22,7 +23,7 @@ class InspectionOutcome(str, enum.Enum):
 class Inspection(Base):
     __tablename__ = "inspection"
 
-    inspection_id = Column(Uuid, primary_key=True)
+    inspection_id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     alert_id = Column(ForeignKey("alert.alert_id"), nullable=True, index=True)
     officer_id = Column(ForeignKey("users.user_id"), nullable=False, index=True)
     zone_id = Column(ForeignKey("zone.zone_id"), nullable=False, index=True)

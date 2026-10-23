@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import Settings
+from core.config import get_settings
+from core.security import apply_security
 from database import init_db
 from models.alert import Alert  # noqa: F401
 from models.alert_assignment import AlertAssignment  # noqa: F401
@@ -18,24 +18,19 @@ from routers.user import router as user_router
 from routers.violation_report import router as violation_report_router
 from routers.inspection import router as inspection_router
 
-settings = Settings()
+settings = get_settings()
 
 app = FastAPI(title="Vesper", version="0.1.0")
 
 init_db()
 
-app.include_router(inspection_router)
-app.include_router(user_router)
-app.include_router(auth_router, prefix="/api")
-app.include_router(violation_report_router, prefix="/violation-reports")
+API_PREFIX = "/vesper"
+app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(user_router, prefix=API_PREFIX)
+app.include_router(inspection_router, prefix=API_PREFIX)
+app.include_router(violation_report_router, prefix=f"{API_PREFIX}/violation-reports")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+apply_security(app, settings)
 
 
 @app.get("/health")

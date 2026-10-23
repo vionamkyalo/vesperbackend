@@ -102,20 +102,6 @@ class InspectionService:
                 detail="inspected_at cannot be in the future.",
             )
 
-        existing = inspection_repository.get(db, data.inspection_id)
-        if existing is not None:
-            if existing.officer_id != current_user.user_id:
-                logger.warning(
-                    "inspection_id %s reused by %s",
-                    data.inspection_id,
-                    current_user.user_id,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="A different inspection already uses this inspection_id.",
-                )
-            return existing
-
         if db.query(Zone).filter(Zone.zone_id == data.zone_id).first() is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Zone was not found."
@@ -126,7 +112,6 @@ class InspectionService:
             alert = self.check_alert(db, current_user, data)
 
         inspection = Inspection(
-            inspection_id=data.inspection_id,
             alert_id=data.alert_id,
             officer_id=current_user.user_id,
             zone_id=data.zone_id,

@@ -14,8 +14,6 @@ DecimalNumber = Annotated[
 
 class InspectionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    inspection_id: uuid.UUID
     alert_id: uuid.UUID | None = None
     zone_id: uuid.UUID
     inspection_type: InspectionType
@@ -44,7 +42,7 @@ class InspectionCreate(BaseModel):
 class InspectionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    inspection_id: uuid.UUID
+    inspection_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     alert_id: uuid.UUID | None
     officer_id: uuid.UUID
     zone_id: uuid.UUID

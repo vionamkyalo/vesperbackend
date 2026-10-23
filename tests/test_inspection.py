@@ -227,12 +227,11 @@ class TestInspection:
         assert sample_catch_check in landing_inspection.catch_checks
 
 
-API = "/api/v1/inspections"
+API = "/vesper/inspections"
 
 
 def valid_body(zone_id=None, alert_id=None, **changes):
     body = {
-        "inspection_id": str(uuid.uuid4()),
         "alert_id": str(alert_id) if alert_id else None,
         "zone_id": str(zone_id or uuid.uuid4()),
         "inspection_type": "site",
@@ -299,7 +298,7 @@ def client(db_session):
     app = FastAPI()
     if REAL_SECURITY:
         security.register_error_handlers(app)
-    app.include_router(inspection_router.router, prefix="/api/v1")
+    app.include_router(inspection_router.router, prefix="/vesper")
 
     def override_get_db():
         yield db_session
@@ -628,7 +627,6 @@ class TestInspectionSchema:
     @pytest.mark.parametrize(
         "field",
         [
-            "inspection_id",
             "zone_id",
             "inspection_type",
             "outcome",
@@ -758,8 +756,6 @@ class TestInspectionSchema:
         [
             ("inspected_at", "yesterday"),
             ("inspected_at", ""),
-            ("inspection_id", "123"),
-            ("inspection_id", ""),
             ("zone_id", "zone-1"),
             ("alert_id", "abc"),
             ("inspection_type", "SITE"),
@@ -779,6 +775,7 @@ class TestInspectionSchema:
     @pytest.mark.parametrize(
         "field, value",
         [
+            ("inspection_id", str(uuid.uuid4())),
             ("officer_id", str(uuid.uuid4())),
             ("synced_at", "2026-10-10T21:00:00Z"),
             ("status", "reported"),
@@ -843,7 +840,7 @@ class TestInspectionService:
             db_session, sample_officer, body
         )
 
-        assert inspection.inspection_id == body.inspection_id
+        assert isinstance(inspection.inspection_id, uuid.UUID)
         assert inspection.officer_id == sample_officer.user_id
         assert inspection.alert_id is None
 
@@ -866,7 +863,7 @@ class TestInspectionService:
         assert sample_assignment.status == AssignmentStatus.REPORTED
         assert sample_assignment.reported_at is not None
 
-    def test_create_inspection_retry_returns_same_record(
+    def test_create_inspection_twice_creates_two_records(
         self, db_session, sample_officer, sample_zone
     ):
         body = InspectionCreate(**valid_body(sample_zone.zone_id))
@@ -874,22 +871,8 @@ class TestInspectionService:
         first = inspection_service.create_inspection(db_session, sample_officer, body)
         second = inspection_service.create_inspection(db_session, sample_officer, body)
 
-        assert first.inspection_id == second.inspection_id
-        assert len(inspection_service.list_inspections(db_session, sample_officer)) == 1
-
-    def test_create_inspection_reused_id_conflicts(
-        self, db_session, second_officer, sample_zone, landing_inspection
-    ):
-        body = InspectionCreate(
-            **valid_body(
-                sample_zone.zone_id, inspection_id=str(landing_inspection.inspection_id)
-            )
-        )
-
-        with pytest.raises(HTTPException) as error:
-            inspection_service.create_inspection(db_session, second_officer, body)
-
-        assert error.value.status_code == 409
+        assert first.inspection_id != second.inspection_id
+        assert len(inspection_service.list_inspections(db_session, sample_officer)) == 2
 
     def test_create_inspection_unknown_zone(self, db_session, sample_officer):
         with pytest.raises(HTTPException) as error:
@@ -1117,7 +1100,7 @@ class TestInspectionService:
             db_session, sample_officer, body
         )
 
-        assert inspection.inspection_id == body.inspection_id
+        assert inspection.inspection_id is not None
 
     def test_get_inspection_inactive_user(
         self, db_session, sample_officer, landing_inspection
@@ -1175,14 +1158,18 @@ class TestInspectionService:
                 sample_zone.zone_id, inspected_at=(now - timedelta(hours=1)).isoformat()
             )
         )
-        inspection_service.create_inspection(db_session, sample_officer, older)
-        inspection_service.create_inspection(db_session, sample_officer, newer)
+        older_record = inspection_service.create_inspection(
+            db_session, sample_officer, older
+        )
+        newer_record = inspection_service.create_inspection(
+            db_session, sample_officer, newer
+        )
 
         results = inspection_service.list_inspections(db_session, sample_officer)
 
         assert [inspection.inspection_id for inspection in results] == [
-            newer.inspection_id,
-            older.inspection_id,
+            newer_record.inspection_id,
+            older_record.inspection_id,
         ]
 
     # ---- positive case
@@ -1211,23 +1198,6 @@ class TestInspectionService:
             db_session, sample_officer, body
         ).outcome == InspectionOutcome(outcome)
 
-    def test_service_retry_with_changed_details_keeps_first_record(
-        self, db_session, sample_officer, sample_zone
-    ):
-        first = InspectionCreate(**valid_body(sample_zone.zone_id, rigs_observed=4))
-        retry = InspectionCreate(
-            **valid_body(
-                sample_zone.zone_id,
-                inspection_id=str(first.inspection_id),
-                rigs_observed=9,
-            )
-        )
-
-        inspection_service.create_inspection(db_session, sample_officer, first)
-        result = inspection_service.create_inspection(db_session, sample_officer, retry)
-
-        assert result.rigs_observed == 4
-
     # ---- boundary case
     @pytest.mark.parametrize(
         "minutes_ahead, allowed", [(0, True), (9, True), (11, False), (60, False)]
@@ -1245,7 +1215,7 @@ class TestInspectionService:
                 inspection_service.create_inspection(
                     db_session, sample_officer, body
                 ).inspection_id
-                == body.inspection_id
+                is not None
             )
         else:
             with pytest.raises(HTTPException) as error:
@@ -1264,7 +1234,7 @@ class TestInspectionService:
             inspection_service.create_inspection(
                 db_session, sample_officer, body
             ).inspection_id
-            == body.inspection_id
+            is not None
         )
 
     # ---- negative case
@@ -1398,17 +1368,32 @@ class TestInspectionRouter:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["inspection_id"] == body["inspection_id"]
+        assert uuid.UUID(data["inspection_id"])
         assert data["officer_id"] == str(sample_officer.user_id)
         assert data["latitude"] == -16.8501
 
-    def test_create_inspection_retry_is_safe(self, client, sample_officer, sample_zone):
+    def test_create_inspection_twice_creates_two(
+        self, client, sample_officer, sample_zone
+    ):
         body = valid_body(sample_zone.zone_id)
         headers = auth_headers(sample_officer)
 
-        assert client.post(API, json=body, headers=headers).status_code == 201
-        assert client.post(API, json=body, headers=headers).status_code == 201
-        assert len(client.get(API, headers=headers).json()) == 1
+        first = client.post(API, json=body, headers=headers)
+        second = client.post(API, json=body, headers=headers)
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert first.json()["inspection_id"] != second.json()["inspection_id"]
+        assert len(client.get(API, headers=headers).json()) == 2
+
+    def test_create_inspection_rejects_client_id(
+        self, client, sample_officer, sample_zone
+    ):
+        body = valid_body(sample_zone.zone_id, inspection_id=str(uuid.uuid4()))
+
+        response = client.post(API, json=body, headers=auth_headers(sample_officer))
+
+        assert response.status_code == 422
 
     def test_create_inspection_coordinator_forbidden(
         self, client, sample_coordinator, sample_zone
@@ -1661,7 +1646,6 @@ class TestInspectionRouter:
     @pytest.mark.parametrize(
         "field",
         [
-            "inspection_id",
             "zone_id",
             "inspection_type",
             "outcome",
