@@ -13,7 +13,7 @@ from models.user import User, UserRole
 from routers import auth as auth_router
 
 STRONG_PASSWORD = "Kariba-Patrol-2026"
-API = "/api/auth"
+API = "/vesper/auth"
 
 
 def make_user(
@@ -39,7 +39,7 @@ def make_user(
 def client(db_session):
     app = FastAPI()
     register_error_handlers(app)
-    app.include_router(auth_router.router, prefix="/api")
+    app.include_router(auth_router.router, prefix="/vesper")
 
     def override_get_db():
         yield db_session
