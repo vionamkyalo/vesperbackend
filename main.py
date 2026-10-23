@@ -31,7 +31,7 @@ init_db()
 app.include_router(user_router)
 app.include_router(auth_router, prefix="/api")
 app.include_router(violation_report_router, prefix="/violation-reports")
-app.include_router(location_officer_router, prefix="/vesper/officer-locations")
+app.include_router(location_officer_router, prefix="/api/officer-locations")
 
 app.add_middleware(
     CORSMiddleware,

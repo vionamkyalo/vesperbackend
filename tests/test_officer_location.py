@@ -163,17 +163,17 @@ def location_payload():
 
 
 OFFICER_ONLY = [
-    ("post", "/vesper/officer-locations", {}),
-    ("get", "/vesper/officer-locations/me", None),
+    ("post", "/api/officer-locations", {}),
+    ("get", "/api/officer-locations/me", None),
 ]
 COORDINATOR_ONLY = [
-    ("get", "/vesper/officer-locations", None),
-    ("get", "/vesper/officer-locations/latest", None),
-    ("post", "/vesper/officer-locations/retention/purge", None),
+    ("get", "/api/officer-locations", None),
+    ("get", "/api/officer-locations/latest", None),
+    ("post", "/api/officer-locations/retention/purge", None),
 ]
 ANY_ROLE = [
-    ("get", "/vesper/officer-locations/{id}", None),
-    ("get", "/vesper/officer-locations/arrival-check/{id}", None),
+    ("get", "/api/officer-locations/{id}", None),
+    ("get", "/api/officer-locations/arrival-check/{id}", None),
 ]
 
 
@@ -592,10 +592,10 @@ class TestLocationEndpoints:
         self, client, officer_headers, location_payload
     ):
         first = client.post(
-            "/vesper/officer-locations", json=location_payload, headers=officer_headers
+            "/api/officer-locations", json=location_payload, headers=officer_headers
         )
         retry = client.post(
-            "/vesper/officer-locations", json=location_payload, headers=officer_headers
+            "/api/officer-locations", json=location_payload, headers=officer_headers
         )
         assert first.status_code == 201
         assert retry.status_code == 200
@@ -605,12 +605,12 @@ class TestLocationEndpoints:
         self, client, officer_headers, location_payload
     ):
         client.post(
-            "/vesper/officer-locations", json=location_payload, headers=officer_headers
+            "/api/officer-locations", json=location_payload, headers=officer_headers
         )
         location_payload["longitude"] = 28.06
         assert (
             client.post(
-                "/vesper/officer-locations",
+                "/api/officer-locations",
                 json=location_payload,
                 headers=officer_headers,
             ).status_code
@@ -621,7 +621,7 @@ class TestLocationEndpoints:
         location_payload["officer_id"] = str(uuid.uuid4())
         assert (
             client.post(
-                "/vesper/officer-locations",
+                "/api/officer-locations",
                 json=location_payload,
                 headers=officer_headers,
             ).status_code
@@ -633,9 +633,7 @@ class TestLocationEndpoints:
     ):
         mine = make_location(sample_officer, minutes_ago(10))
         make_location(second_officer, minutes_ago(9))
-        body = client.get(
-            "/vesper/officer-locations/me", headers=officer_headers
-        ).json()
+        body = client.get("/api/officer-locations/me", headers=officer_headers).json()
         assert [i["location_id"] for i in body["items"]] == [str(mine.location_id)]
 
     def test_coordinator_lists_all_and_latest(
@@ -645,13 +643,13 @@ class TestLocationEndpoints:
         newest = make_location(sample_officer, minutes_ago(10))
         make_location(second_officer, minutes_ago(9))
         assert (
-            client.get("/vesper/officer-locations", headers=coordinator_headers).json()[
+            client.get("/api/officer-locations", headers=coordinator_headers).json()[
                 "total"
             ]
             == 3
         )
         latest = client.get(
-            "/vesper/officer-locations/latest", headers=coordinator_headers
+            "/api/officer-locations/latest", headers=coordinator_headers
         ).json()
         assert len(latest) == 2
         assert str(newest.location_id) in [row["location_id"] for row in latest]
@@ -667,13 +665,13 @@ class TestLocationEndpoints:
         fix = make_location(sample_officer, minutes_ago(3))
         assert (
             client.get(
-                f"/vesper/officer-locations/{fix.location_id}", headers=officer_headers
+                f"/api/officer-locations/{fix.location_id}", headers=officer_headers
             ).status_code
             == 200
         )
         assert (
             client.get(
-                f"/vesper/officer-locations/{fix.location_id}",
+                f"/api/officer-locations/{fix.location_id}",
                 headers=second_officer_headers,
             ).status_code
             == 404
@@ -698,14 +696,14 @@ class TestLocationEndpoints:
         }
         assert (
             client.post(
-                "/vesper/officer-locations", json=fix, headers=officer_headers
+                "/api/officer-locations", json=fix, headers=officer_headers
             ).status_code
             == 201
         )
 
         for headers in (coordinator_headers, officer_headers):
             arrival = client.get(
-                f"/vesper/officer-locations/arrival-check/{alert_id}", headers=headers
+                f"/api/officer-locations/arrival-check/{alert_id}", headers=headers
             ).json()
             assert arrival["arrived"] is True
             assert arrival["positions_checked"] == 1
@@ -723,9 +721,9 @@ class TestLocationEndpoints:
             "accuracy_m": "10",
             "recorded_at": minutes_ago(5).isoformat(),
         }
-        client.post("/vesper/officer-locations", json=fix, headers=officer_headers)
+        client.post("/api/officer-locations", json=fix, headers=officer_headers)
         arrival = client.get(
-            f"/vesper/officer-locations/arrival-check/{alert_id}",
+            f"/api/officer-locations/arrival-check/{alert_id}",
             headers=officer_headers,
         ).json()
         assert arrival["arrived"] is False
@@ -735,7 +733,7 @@ class TestLocationEndpoints:
         self, client, second_officer_headers, sample_alert, sample_assignment
     ):
         response = client.get(
-            f"/vesper/officer-locations/arrival-check/{sample_alert.alert_id}",
+            f"/api/officer-locations/arrival-check/{sample_alert.alert_id}",
             headers=second_officer_headers,
         )
         assert response.status_code == 403
@@ -743,7 +741,7 @@ class TestLocationEndpoints:
     def test_arrival_check_unknown_alert_is_404(self, client, coordinator_headers):
         assert (
             client.get(
-                f"/vesper/officer-locations/arrival-check/{uuid.uuid4()}",
+                f"/api/officer-locations/arrival-check/{uuid.uuid4()}",
                 headers=coordinator_headers,
             ).status_code
             == 404
@@ -754,7 +752,7 @@ class TestLocationEndpoints:
     ):
         make_location(sample_officer, minutes_ago(60 * 24 * 100))
         response = client.post(
-            "/vesper/officer-locations/retention/purge", headers=coordinator_headers
+            "/api/officer-locations/retention/purge", headers=coordinator_headers
         )
         assert response.status_code == 200
         assert response.json()["deleted_count"] == 1
