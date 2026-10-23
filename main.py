@@ -24,9 +24,6 @@ app.include_router(violation_report_router, prefix="/api/violation-reports")
 app.include_router(user_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(zone.router, prefix="/api")
-
-app.include_router(user_router)
-app.include_router(auth_router, prefix="/api")
 app.include_router(alert_router, prefix="/api/alerts")
 app.include_router(catch_check_router, prefix="/api")
 
