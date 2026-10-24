@@ -22,7 +22,7 @@ from routers.officer_location import router as location_officer_router
 
 settings = Settings()
 
-app = FastAPI(title="Vesper", version="0.1.0")
+app = FastAPI(title="Vesper", version="0.1.0", redirect_slashes=False)
 
 register_error_handlers(app)
 
@@ -30,8 +30,8 @@ init_db()
 
 app.include_router(user_router)
 app.include_router(auth_router, prefix="/api")
-app.include_router(violation_report_router, prefix="/violation-reports")
-app.include_router(location_officer_router, prefix="/api/officer-locations")
+app.include_router(violation_report_router, prefix="/api")
+app.include_router(location_officer_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
