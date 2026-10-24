@@ -6,11 +6,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import utcnow
-from models.alert_assignment import AssignmentStatus
+from models.alert import Alert
+from models.alert_assignment import AlertAssignment, AssignmentStatus
 from models.inspection import Inspection
 from models.user import User, UserRole
-from repositories.alert import alert_repository
-from repositories.alert_assignment import alert_assignment_repository
 from repositories.inspection import inspection_repository
 from repositories.zone import zone_repository
 from schemas.inspection import InspectionCreate
@@ -33,10 +32,18 @@ class InspectionService:
         return current_user.role == UserRole.PATROL_COORDINATOR
 
     def officer_was_assigned(self, db: Session, alert_id, officer_id):
-        return alert_assignment_repository.exists_for_officer(db, alert_id, officer_id)
+        assignment = (
+            db.query(AlertAssignment)
+            .filter(
+                AlertAssignment.alert_id == alert_id,
+                AlertAssignment.officer_id == officer_id,
+            )
+            .first()
+        )
+        return assignment is not None
 
     def check_alert(self, db: Session, current_user: User, data: InspectionCreate):
-        alert = alert_repository.get(db, data.alert_id)
+        alert = db.query(Alert).filter(Alert.alert_id == data.alert_id).first()
 
         assigned = False
         if alert is not None:
@@ -65,8 +72,14 @@ class InspectionService:
         alert.assignment_status = AssignmentStatus.REPORTED
         alert.reported_at = now
 
-        assignment = alert_assignment_repository.get_active_for_officer(
-            db, alert.alert_id, current_user.user_id
+        assignment = (
+            db.query(AlertAssignment)
+            .filter(
+                AlertAssignment.alert_id == alert.alert_id,
+                AlertAssignment.officer_id == current_user.user_id,
+                AlertAssignment.ended_at.is_(None),
+            )
+            .first()
         )
         if assignment is not None:
             assignment.status = AssignmentStatus.REPORTED
