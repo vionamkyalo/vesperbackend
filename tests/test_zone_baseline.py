@@ -264,6 +264,18 @@ class TestZoneBaselineService:
 
         assert error.value.status_code == 403
 
+    def test_recalculate_spread_never_zero(
+        self, db_session, sample_coordinator, sample_zone
+    ):
+        add_band_readings(db_session, sample_zone, MoonBand.DARK, ["0", "0", "0"])
+
+        result = zone_baseline_service.recalculate(
+            db_session, sample_coordinator, ZoneBaselineRecalculate(min_nights=3)
+        )
+
+        assert result.updated[0].expected_light_index == Decimal("0.0000")
+        assert result.updated[0].spread == Decimal("0.1000")
+
     def test_list_baselines_inactive_user(self, db_session, sample_coordinator):
         sample_coordinator.is_active = False
 
@@ -313,6 +325,7 @@ class TestZoneBaselineService:
         assert len(result.updated) == 1
         assert result.updated[0].moon_band == MoonBand.DARK
         assert result.updated[0].expected_light_index == Decimal("30.0000")
+        assert result.updated[0].spread == Decimal("14.8260")
         assert result.updated[0].nights_used == 5
         assert {item.moon_band for item in result.skipped} == {
             MoonBand.PARTIAL,

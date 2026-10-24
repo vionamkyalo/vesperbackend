@@ -21,6 +21,7 @@ class ZoneBaselineRead(BaseModel):
     expected_light_index: DecimalNumber
     nights_used: int
     calculated_at: datetime
+    spread: DecimalNumber
 
 
 class ZoneBaselineFilter(BaseModel):

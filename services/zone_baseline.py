@@ -6,12 +6,14 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import HTTPException, status
+from models import zone
 from sqlalchemy.orm import Session
 
 from database import utcnow
 from models.user import User, UserRole
 from models.zone import Zone
 from models.zone_baseline import MoonBand, ZoneBaseline
+from repositories.zone import zone_repository
 from repositories.zone_baseline import zone_baseline_repository
 from schemas.zone_baseline import (
     ZoneBaselineFilter,
@@ -29,6 +31,8 @@ OBSERVATION_HOUR_UTC = 22
 DARK_MAX_ILLUMINATION = 0.25
 BRIGHT_MIN_ILLUMINATION = 0.75
 LIGHT_INDEX_PLACES = Decimal("0.0001")
+MAD_SCALE = Decimal("1.4826")
+MIN_SPREAD = Decimal("0.1000")
 
 
 def moon_illumination(day):
@@ -46,6 +50,12 @@ def moon_band_for(day):
     if illumination < BRIGHT_MIN_ILLUMINATION:
         return MoonBand.PARTIAL
     return MoonBand.BRIGHT
+
+
+def spread_of(values, centre):
+    deviations = [abs(value - centre) for value in values]
+    mad = Decimal(statistics.median(deviations)) * MAD_SCALE
+    return max(mad, MIN_SPREAD).quantize(LIGHT_INDEX_PLACES, rounding=ROUND_HALF_UP)
 
 
 class ZoneBaselineService:
@@ -97,7 +107,7 @@ class ZoneBaselineService:
         if zone_id is None:
             return db.query(Zone).order_by(Zone.name).all()
 
-        zone = db.get(Zone, zone_id)
+        zone = zone_repository.get(db, zone_id)
         if zone is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Zone was not found."
@@ -113,9 +123,9 @@ class ZoneBaselineService:
         return nights
 
     def save_baseline(self, db: Session, zone_id, moon_band, values):
-        expected = Decimal(statistics.median(values)).quantize(
-            LIGHT_INDEX_PLACES, rounding=ROUND_HALF_UP
-        )
+        median = Decimal(statistics.median(values))
+        expected = median.quantize(LIGHT_INDEX_PLACES, rounding=ROUND_HALF_UP)
+        spread = spread_of(values, median)
         baseline = zone_baseline_repository.get_by_zone_band(db, zone_id, moon_band)
 
         if baseline is None:
@@ -125,12 +135,14 @@ class ZoneBaselineService:
                     zone_id=zone_id,
                     moon_band=moon_band,
                     expected_light_index=expected,
+                    spread=spread,
                     nights_used=len(values),
                     calculated_at=utcnow(),
                 ),
             )
 
         baseline.expected_light_index = expected
+        baseline.spread = spread
         baseline.nights_used = len(values)
         baseline.calculated_at = utcnow()
         return zone_baseline_repository.update(db, baseline)
