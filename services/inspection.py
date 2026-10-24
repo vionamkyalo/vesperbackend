@@ -6,12 +6,13 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import utcnow
-from models.alert import Alert
-from models.alert_assignment import AlertAssignment, AssignmentStatus
+from models.alert_assignment import AssignmentStatus
 from models.inspection import Inspection
 from models.user import User, UserRole
-from models.zone import Zone
+from repositories.alert import alert_repository
+from repositories.alert_assignment import alert_assignment_repository
 from repositories.inspection import inspection_repository
+from repositories.zone import zone_repository
 from schemas.inspection import InspectionCreate
 
 logger = logging.getLogger(__name__)
@@ -32,18 +33,10 @@ class InspectionService:
         return current_user.role == UserRole.PATROL_COORDINATOR
 
     def officer_was_assigned(self, db: Session, alert_id, officer_id):
-        assignment = (
-            db.query(AlertAssignment)
-            .filter(
-                AlertAssignment.alert_id == alert_id,
-                AlertAssignment.officer_id == officer_id,
-            )
-            .first()
-        )
-        return assignment is not None
+        return alert_assignment_repository.exists_for_officer(db, alert_id, officer_id)
 
     def check_alert(self, db: Session, current_user: User, data: InspectionCreate):
-        alert = db.query(Alert).filter(Alert.alert_id == data.alert_id).first()
+        alert = alert_repository.get(db, data.alert_id)
 
         assigned = False
         if alert is not None:
@@ -72,14 +65,8 @@ class InspectionService:
         alert.assignment_status = AssignmentStatus.REPORTED
         alert.reported_at = now
 
-        assignment = (
-            db.query(AlertAssignment)
-            .filter(
-                AlertAssignment.alert_id == alert.alert_id,
-                AlertAssignment.officer_id == current_user.user_id,
-                AlertAssignment.ended_at.is_(None),
-            )
-            .first()
+        assignment = alert_assignment_repository.get_active_for_officer(
+            db, alert.alert_id, current_user.user_id
         )
         if assignment is not None:
             assignment.status = AssignmentStatus.REPORTED
@@ -102,7 +89,7 @@ class InspectionService:
                 detail="inspected_at cannot be in the future.",
             )
 
-        if db.query(Zone).filter(Zone.zone_id == data.zone_id).first() is None:
+        if zone_repository.get(db, data.zone_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Zone was not found."
             )
@@ -172,20 +159,13 @@ class InspectionService:
         if not self.is_coordinator(current_user):
             officer_id = current_user.user_id
 
-        query = db.query(Inspection)
-
-        if officer_id is not None:
-            query = query.filter(Inspection.officer_id == officer_id)
-        if alert_id is not None:
-            query = query.filter(Inspection.alert_id == alert_id)
-        if zone_id is not None:
-            query = query.filter(Inspection.zone_id == zone_id)
-
-        return (
-            query.order_by(Inspection.inspected_at.desc())
-            .limit(limit)
-            .offset(offset)
-            .all()
+        return inspection_repository.search(
+            db,
+            officer_id=officer_id,
+            alert_id=alert_id,
+            zone_id=zone_id,
+            limit=limit,
+            offset=offset,
         )
 
 
