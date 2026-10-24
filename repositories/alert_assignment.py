@@ -26,5 +26,42 @@ class AlertAssignmentRepository:
         db.refresh(assignment)
         return assignment
 
+    def get_active_for_alert(self, db: Session, alert_id):
+        return (
+            db.query(AlertAssignment)
+            .filter(
+                AlertAssignment.alert_id == alert_id,
+                AlertAssignment.ended_at.is_(None),
+            )
+            .first()
+        )
+
+    def search(
+        self,
+        db: Session,
+        *,
+        alert_id=None,
+        officer_id=None,
+        assignment_status=None,
+        active_only=False,
+        limit=50,
+        offset=0,
+    ):
+        query = db.query(AlertAssignment)
+        if alert_id is not None:
+            query = query.filter(AlertAssignment.alert_id == alert_id)
+        if officer_id is not None:
+            query = query.filter(AlertAssignment.officer_id == officer_id)
+        if assignment_status is not None:
+            query = query.filter(AlertAssignment.status == assignment_status)
+        if active_only:
+            query = query.filter(AlertAssignment.ended_at.is_(None))
+        return (
+            query.order_by(AlertAssignment.assigned_at.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
 
 alert_assignment_repository = AlertAssignmentRepository()

@@ -5,10 +5,12 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import utcnow
-from models.alert import Alert, AlertStatus
+from models.alert import AlertStatus
 from models.alert_assignment import AlertAssignment, AssignmentStatus
 from models.user import User, UserRole
+from repositories.alert import alert_repository
 from repositories.alert_assignment import alert_assignment_repository
+from repositories.user import user_repository
 from schemas.alert_assignment import AlertAssignmentCreate
 
 logger = logging.getLogger(__name__)
@@ -51,13 +53,7 @@ class AlertAssignmentService:
             )
 
     def get_active_assignment(self, db: Session, alert_id):
-        return (
-            db.query(AlertAssignment)
-            .filter(
-                AlertAssignment.alert_id == alert_id, AlertAssignment.ended_at.is_(None)
-            )
-            .first()
-        )
+        return alert_assignment_repository.get_active_for_alert(db, alert_id)
 
     def check_open(self, assignment):
         if assignment.ended_at is not None:
@@ -71,7 +67,7 @@ class AlertAssignmentService:
     ):
         self.check_coordinator(current_user)
 
-        alert = db.query(Alert).filter(Alert.alert_id == data.alert_id).first()
+        alert = alert_repository.get(db, data.alert_id)
         if alert is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Alert was not found."
@@ -83,7 +79,7 @@ class AlertAssignmentService:
                 detail=f"A {alert.status.value} alert cannot be assigned.",
             )
 
-        officer = db.query(User).filter(User.user_id == data.officer_id).first()
+        officer = user_repository.get_by_id(db, data.officer_id)
         if officer is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Officer was not found."
@@ -170,26 +166,17 @@ class AlertAssignmentService:
         if not self.is_coordinator(current_user):
             officer_id = current_user.user_id
 
-        query = db.query(AlertAssignment)
-
-        if alert_id is not None:
-            query = query.filter(AlertAssignment.alert_id == alert_id)
-        if officer_id is not None:
-            query = query.filter(AlertAssignment.officer_id == officer_id)
-        if assignment_status is not None:
-            query = query.filter(AlertAssignment.status == assignment_status)
-        if active_only:
-            query = query.filter(AlertAssignment.ended_at.is_(None))
-
-        return (
-            query.order_by(AlertAssignment.assigned_at.desc())
-            .limit(limit)
-            .offset(offset)
-            .all()
+        return alert_assignment_repository.search(
+            db,
+            alert_id=alert_id,
+            officer_id=officer_id,
+            assignment_status=assignment_status,
+            active_only=active_only,
+            limit=limit,
+            offset=offset,
         )
 
     def acknowledge(self, db: Session, current_user: User, assignment_id: uuid.UUID):
-
         self.check_officer(current_user)
         assignment = self.get_assignment(db, current_user, assignment_id)
         self.check_open(assignment)
