@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import HTTPException, status
-from models import zone
 from sqlalchemy.orm import Session
 
 from database import utcnow

@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     viirs_quality_band: str = "Mandatory_Quality_Flag"
     viirs_radiance_scale: float = 1.0
     viirs_pixel_scale_m: int = 500
+    earthdata_token: SecretStr = SecretStr("")
+    laads_base_url: str = "https://ladsweb.modaps.eosdis.nasa.gov/archive/allData"
+    laads_archive_set: str = "5200"
+    viirs_daily_product: str = "VNP46A1"
+    viirs_tile: str = "h20v10"
+    kariba_bbox: List[float] = [26.5, -18.6, 29.5, -16.3]
+    min_clear_fraction: float = 0.3
 
     smtp_host: str = ""
     smtp_port: int = 587

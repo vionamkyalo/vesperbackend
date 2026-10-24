@@ -36,3 +36,17 @@ class DetectionResult(BaseModel):
     moon_band: MoonBand
     readings_saved: int
     alerts: List[DetectionAlert]
+
+
+class NasaRun(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observation_date: date
+
+
+class IngestionResult(BaseModel):
+    observation_date: date
+    skipped: bool
+    clear_fraction: float
+    points_found: int
+    detection: DetectionResult | None = None
