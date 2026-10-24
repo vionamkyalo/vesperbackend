@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from core.security import require_any_user, require_coordinator, require_officer
+import core.security as security
 from database import get_db, utcnow
 from main import app
 from models.user import User, UserRole
@@ -27,8 +27,10 @@ def client(db_session):
 
 
 def log_in_as(user):
-    for dependency in (require_any_user, require_coordinator, require_officer):
-        app.dependency_overrides[dependency] = lambda: user
+    # Pretend this user is logged in, for every security check the routes use.
+    for name in dir(security):
+        if name.startswith(("require_", "get_current")):
+            app.dependency_overrides[getattr(security, name)] = lambda: user
 
 
 class TestViolationReportRoutes:
@@ -36,7 +38,7 @@ class TestViolationReportRoutes:
         log_in_as(officer)
 
         response = client.post(
-            "/api",
+            "/api/violation-reports",
             json={
                 "inspection_id": str(sample_inspection.inspection_id),
                 "violation_type": ViolationType.MISSING_PERMIT.value,
@@ -46,14 +48,14 @@ class TestViolationReportRoutes:
             },
         )
 
-        assert response.status_code == 201
+        assert response.status_code == 201, response.json()
         assert uuid.UUID(response.json()["violation_id"])
 
     def test_client_cannot_send_violation_id(self, client, officer, sample_inspection):
         log_in_as(officer)
 
         response = client.post(
-            "/api",
+            "/api/violation-reports",
             json={
                 "violation_id": str(uuid.uuid4()),
                 "inspection_id": str(sample_inspection.inspection_id),
@@ -64,23 +66,23 @@ class TestViolationReportRoutes:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 422, response.json()
 
     def test_officer_lists_own_reports(self, client, officer, sample_violation):
         log_in_as(officer)
 
-        response = client.get("/api")
+        response = client.get("/api/violation-reports")
 
-        assert response.status_code == 200
+        assert response.status_code == 200, response.json()
         ids = [report["violation_id"] for report in response.json()]
         assert str(sample_violation.violation_id) in ids
 
     def test_officer_gets_own_report(self, client, officer, sample_violation):
         log_in_as(officer)
 
-        response = client.get(f"/api/{sample_violation.violation_id}")
+        response = client.get(f"/api/violation-reports/{sample_violation.violation_id}")
 
-        assert response.status_code == 200
+        assert response.status_code == 200, response.json()
         assert response.json()["violation_id"] == str(sample_violation.violation_id)
 
     def test_coordinator_reviews_report(
@@ -88,29 +90,31 @@ class TestViolationReportRoutes:
     ):
         log_in_as(sample_coordinator)
 
-        response = client.post(f"/api/{sample_violation.violation_id}/review")
+        response = client.post(
+            f"/api/violation-reports/{sample_violation.violation_id}/review"
+        )
 
-        assert response.status_code == 200
+        assert response.status_code == 200, response.json()
         assert response.json()["review_status"] == ReviewStatus.REVIEWED.value
 
     def test_coordinator_deletes_report(
         self, client, sample_coordinator, sample_violation
     ):
         log_in_as(sample_coordinator)
-        url = f"/api/{sample_violation.violation_id}"
+        url = f"/api/violation-reports/{sample_violation.violation_id}"
 
         delete_response = client.delete(url)
         get_response = client.get(url)
 
         assert delete_response.status_code == 204
-        assert get_response.status_code == 404
+        assert get_response.status_code == 404, get_response.json()
 
     def test_deleting_unknown_report_returns_404(self, client, sample_coordinator):
         log_in_as(sample_coordinator)
 
-        response = client.delete(f"/api/{uuid.uuid4()}")
+        response = client.delete(f"/api/violation-reports/{uuid.uuid4()}")
 
-        assert response.status_code == 404
+        assert response.status_code == 404, response.json()
 
 
 class TestViolationReportServiceExtras:
