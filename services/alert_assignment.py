@@ -5,10 +5,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import utcnow
-from models.alert import AlertStatus
+from models.alert import Alert, AlertStatus
 from models.alert_assignment import AlertAssignment, AssignmentStatus
 from models.user import User, UserRole
-from repositories.alert import alert_repository
 from repositories.alert_assignment import alert_assignment_repository
 from repositories.user import user_repository
 from schemas.alert_assignment import AlertAssignmentCreate
@@ -67,7 +66,7 @@ class AlertAssignmentService:
     ):
         self.check_coordinator(current_user)
 
-        alert = alert_repository.get(db, data.alert_id)
+        alert = db.query(Alert).filter(Alert.alert_id == data.alert_id).first()
         if alert is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Alert was not found."
@@ -79,7 +78,7 @@ class AlertAssignmentService:
                 detail=f"A {alert.status.value} alert cannot be assigned.",
             )
 
-        officer = user_repository.get_by_id(db, data.officer_id)
+        officer = user_repository.get(db, data.officer_id)
         if officer is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Officer was not found."

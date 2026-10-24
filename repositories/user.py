@@ -45,8 +45,5 @@ class UserRepository:
     def count_by_role(self, db: Session, role) -> int:
         return db.query(User).filter(User.role == role).count()
 
-    def get_by_id(self, db, user_id):
-        return db.query(User).filter(User.user_id == user_id).first()
-
 
 user_repository = UserRepository()
