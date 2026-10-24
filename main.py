@@ -25,7 +25,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(zone.router, prefix="/api")
 app.include_router(catch_check_router, prefix="/api")
 app.include_router(violation_report_router, prefix="/api/violation-reports")
-app.include_router(location_officer_router, prefix="/api")
+app.include_router(location_officer_router, prefix="/api/officer-locations")
 app.include_router(zone_setting_history_router, prefix="/api")
 
 app.add_middleware(

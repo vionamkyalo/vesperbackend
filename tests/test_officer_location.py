@@ -149,7 +149,7 @@ def location_payload():
 OFFICER_ONLY = [
     (
         "post",
-        "/api",
+        "/api/officer-locations",
         {
             "latitude": "-16.851000",
             "longitude": "28.049000",
@@ -160,13 +160,13 @@ OFFICER_ONLY = [
     ("get", "/api/me", None),
 ]
 COORDINATOR_ONLY = [
-    ("get", "/api", None),
-    ("get", "/api/latest", None),
-    ("post", "/api/retention/purge", None),
+    ("get", "/api/officer-locations", None),
+    ("get", "/api/officer-locations/latest", None),
+    ("post", "/api/officer-locations/retention/purge", None),
 ]
 ANY_ROLE = [
-    ("get", "/api/{id}", None),
-    ("get", "/api/arrival-check/{id}", None),
+    ("get", "/api/officer-locations/{id}", None),
+    ("get", "/api/officer-locations/arrival-check/{id}", None),
 ]
 
 
