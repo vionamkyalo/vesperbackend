@@ -14,6 +14,7 @@ from routers.violation_report import router as violation_report_router
 from routers.zone_baseline import router as zone_baseline_router
 from routers.detection import router as detection_router
 from routers.alert_assignment import router as alert_assignment_router
+from routers.zone_light_reading import router as zone_light_reading_router
 
 settings = get_settings()
 
@@ -32,6 +33,7 @@ app.include_router(catch_check_router, prefix="/api")
 app.include_router(violation_report_router, prefix="/api/violation-reports")
 app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
+app.include_router(zone_light_reading_router, prefix="/api/zone-light-readings")
 
 app.add_middleware(
     CORSMiddleware,
