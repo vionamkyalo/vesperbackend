@@ -4,6 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import zone
 from core.config import Settings
 from core.security import register_error_handlers
+import models.alert
+import models.alert_assignment
+import models.catch_check
+import models.inspection
+import models.officer_location
+import models.violation_report
+import models.zone_baseline
+import models.zone_light_reading
+import models.zone_setting_history
 
 from database import init_db
 from routers.auth import router as auth_router
@@ -31,7 +40,10 @@ app.include_router(zone_setting_history_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allowed_origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
