@@ -33,12 +33,13 @@ app.include_router(violation_report_router, prefix="/api/violation-reports")
 app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
 
+origins = settings.CORS_ORIGINS
+if isinstance(origins, str):
+    origins = [o.strip() for o in origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

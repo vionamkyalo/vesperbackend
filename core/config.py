@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
-    cors_allowed_origins: list[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: str | list[str] = "http://localhost:3000,http://127.0.0.1:3000"
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     max_request_bytes: int = 1_000_000
     api_rate_limit_per_minute: int = 120
