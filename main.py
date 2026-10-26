@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import zone
-from core.config import Settings
+from core.config import get_settings
 from core.security import register_error_handlers
 
 from database import init_db
@@ -11,7 +11,6 @@ from routers.user import router as user_router
 from routers.zone_setting_history import router as zone_setting_history_router
 from routers.catch_check import router as catch_check_router
 from routers.inspection import router as inspection_router
-from routers.zone import router as zone_router
 from routers.violation_report import router as violation_report_router
 from routers.alert import router as alert_router
 from routers.alert_assignment import router as alert_assignment_router
