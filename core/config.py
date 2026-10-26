@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Vesper API"
     environment: Literal["development", "test", "production"] = "development"
-    api_prefix: str = "/vesper"
+    api_prefix: str = "/api"
 
     database_url: str = "sqlite:///./vesper.db"
     create_tables_on_startup: bool = False
