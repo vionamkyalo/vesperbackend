@@ -82,16 +82,20 @@ class ForgotPasswordRequest(BaseModel):
         return value.lower()
 
 
-class ResetPasswordRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
-    token: str = Field(min_length=1, max_length=1024)
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    token: str = Field(min_length=1)
     new_password: str = Field(min_length=12, max_length=128)
+
+
 
 
 class ForgotPasswordResponse(BaseModel):
     message: str = (
-        "If an account exists for that email, a password reset link has been sent."
+        "If an account exists for that email, "
+        "a password reset link has been sent."
     )
 
 

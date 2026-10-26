@@ -42,6 +42,7 @@ If you did not expect this email, contact your patrol coordinator.
         server.send_message(message)
 
 
+
 def send_password_reset_email(
     recipient: str,
     first_name: str,
@@ -52,12 +53,8 @@ def send_password_reset_email(
     if not settings.smtp_host or not settings.smtp_username:
         raise RuntimeError("SMTP email settings are not configured")
 
-    reset_url = (
-        f"{settings.frontend_url.rstrip('/')}/reset-password?token={reset_token}"
-    )
-
     message = EmailMessage()
-    message["Subject"] = "Reset your Vesper patrol password"
+    message["Subject"] = "Your Vesper password reset token"
     message["From"] = settings.email_from or settings.smtp_username
     message["To"] = recipient
 
@@ -66,17 +63,25 @@ def send_password_reset_email(
 
 You requested a password reset for your Vesper patrol account.
 
-Use the link below to set a new password:
-{reset_url}
+Your password reset token is:
 
-This link expires in 15 minutes and can only be used once.
+{reset_token}
+
+This token expires in 15 minutes.
+
+Use this token to reset your password in the Vesper app.
+
 If you did not request this reset, you can safely ignore this email.
 """
     )
 
     smtp_password = settings.smtp_password.get_secret_value()
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
+    with smtplib.SMTP(
+        settings.smtp_host,
+        settings.smtp_port,
+        timeout=15,
+    ) as server:
         server.starttls()
         server.login(settings.smtp_username, smtp_password)
         server.send_message(message)
