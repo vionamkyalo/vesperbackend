@@ -1,0 +1,11 @@
+from models.alert import Alert  # noqa: F401
+from models.alert_assignment import AlertAssignment  # noqa: F401
+from models.catch_check import CatchCheck  # noqa: F401
+from models.inspection import Inspection  # noqa: F401
+from models.officer_location import OfficerLocation  # noqa: F401
+from models.user import User  # noqa: F401
+from models.violation_report import ViolationReport  # noqa: F401
+from models.zone import Zone  # noqa: F401
+from models.zone_baseline import ZoneBaseline  # noqa: F401
+from models.zone_light_reading import ZoneLightReading  # noqa: F401
+from models.zone_setting_history import ZoneSettingHistory  # noqa: F401
