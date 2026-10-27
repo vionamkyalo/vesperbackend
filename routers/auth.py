@@ -41,7 +41,10 @@ def reset_password(
     db: Session = Depends(get_db),
 ):
     return user_service.reset_password(
-        db, body.token, body.new_password
+        db,
+        email=str(body.email),
+        code=body.code,
+        new_password=body.new_password,
     )
 
 

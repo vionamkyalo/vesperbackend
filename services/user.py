@@ -1,3 +1,9 @@
+
+import hashlib
+import hmac
+import secrets
+import threading
+import time
 import logging
 import uuid
 
@@ -36,6 +42,9 @@ REQUIRED_UPDATE_FIELDS = (
     "is_active",
 )
 
+_reset_codes = {}
+_reset_codes_lock = threading.Lock()
+_RESET_CODE_TTL = 900
 
 class UserService:
     def check_active(self, current_user: User) -> None:
@@ -425,50 +434,75 @@ class UserService:
         logger.info("Password changed for %s", current_user.user_id)
 
     def forgot_password(self, db: Session, email: str) -> ForgotPasswordResponse:
-        user = user_repository.get_by_email(db, email)
+        user = user_repository.get_by_email(db, email.lower())
 
         if user is not None and user.is_active:
-            token = create_reset_token(user.user_id)
+            code = f"{secrets.randbelow(1_000_000):06d}"
+
+            with _reset_codes_lock:
+                _reset_codes[user.email] = {
+                    "hash": hashlib.sha256(code.encode()).hexdigest(),
+                    "expires": time.time() + _RESET_CODE_TTL,
+                    "attempts": 0,
+                }
 
             try:
-                send_password_reset_email(
-                    recipient=user.email,
-                    first_name=user.first_name,
-                    reset_token=token,
-                )
+               send_password_reset_email(
+                recipient=user.email,
+                first_name=user.first_name,
+                reset_code=code,
+            )
             except Exception as error:
-                logger.exception(
-                    "Password reset email failed for user %s", user.user_id
-                )
+                with _reset_codes_lock:
+                    _reset_codes.pop(user.email, None)
+                logger.exception("Password reset email failed")
                 raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=(
-                        "The reset token was created, but the email could not be "
-                        "sent. Check the email configuration before retrying."
-                    ),
+                    status_code=502,
+                    detail="Unable to send reset code. Please try again.",
                 ) from error
 
         return ForgotPasswordResponse()
 
     def reset_password(
-        self, db: Session, token: str, new_password: str
+        self,
+        db: Session,
+        email: str,
+        code: str,
+        new_password: str,
     ) -> ResetPasswordResponse:
         self.check_password_strength(new_password)
+        email = email.lower()
 
-        try:
-            payload = decode_token(token, RESET_TOKEN)
-            user_id = uuid.UUID(payload["sub"])
-        except AuthenticationError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired reset token.",
-            )
+        with _reset_codes_lock:
+            record = _reset_codes.get(email)
 
-        user = user_repository.get(db, user_id)
+            if (
+                record is None
+                or time.time() >= record["expires"]
+                or record["attempts"] >= 5
+            ):
+                _reset_codes.pop(email, None)
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired reset code.",
+                )
+
+            submitted_hash = hashlib.sha256(code.encode()).hexdigest()
+
+            if not hmac.compare_digest(record["hash"], submitted_hash):
+                record["attempts"] += 1
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired reset code.",
+                )
+
+            _reset_codes.pop(email, None)
+
+        user = user_repository.get_by_email(db, email)
         if user is None or not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired reset token.",
+                status_code=400,
+                detail="Invalid or expired reset code.",
             )
 
         user.password_hash = hash_password(new_password)
