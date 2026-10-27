@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -122,15 +122,21 @@ class OfficerLocationService:
         return stored
 
     def record_location(
-        self, data: OfficerLocationCreate, officer: User, now: datetime | None = None
-    ) -> tuple[OfficerLocation, bool]:
+        self,
+        data: OfficerLocationCreate,
+        officer: User,
+        response: Response,
+        now: datetime | None = None,
+    ) -> OfficerLocation:
 
         settings = get_settings()
         now = now or _utcnow()
 
         stored = self.repo.get_by_id(data.location_id)
         if stored is not None:
-            return self._replay_or_conflict(stored, data, officer), False
+            location = self._replay_or_conflict(stored, data, officer)
+            response.status_code = status.HTTP_200_OK
+            return location
 
         if data.recorded_at > now + timedelta(
             minutes=settings.location_clock_skew_minutes

@@ -28,7 +28,6 @@ router = APIRouter(tags=["Officer Locations"])
     "",
     response_model=OfficerLocationRead,
     status_code=status.HTTP_201_CREATED,
-    responses={200: {"description": "Same fix was already stored (safe retry)"}},
 )
 def record_location(
     data: OfficerLocationCreate,
@@ -36,10 +35,7 @@ def record_location(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer),
 ):
-    location, created = OfficerLocationService(db).record_location(data, current_user)
-    if not created:
-        response.status_code = status.HTTP_200_OK
-    return location
+    return OfficerLocationService(db).record_location(data, current_user, response)
 
 
 @router.get("/me", response_model=OfficerLocationPage)
