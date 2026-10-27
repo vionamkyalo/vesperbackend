@@ -26,5 +26,6 @@ class ZoneBaseline(Base):
     expected_light_index = Column(Numeric(12, 4), nullable=False)
     nights_used = Column(Integer, nullable=False)
     calculated_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+    spread = Column(Numeric(12, 4), nullable=False, default=1)
 
     zone = relationship("Zone", back_populates="baselines")
