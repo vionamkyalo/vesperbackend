@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
-
 from dotenv import load_dotenv
+
 from sqlalchemy import JSON, DateTime, Enum, create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, sessionmaker
