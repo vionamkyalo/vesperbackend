@@ -82,7 +82,6 @@ class ForgotPasswordRequest(BaseModel):
         return value.lower()
 
 
-
 class ResetPasswordRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -96,11 +95,9 @@ class ResetPasswordRequest(BaseModel):
         return value.lower()
 
 
-
 class ForgotPasswordResponse(BaseModel):
     message: str = (
-        "If an account exists for that email, "
-        "a password reset code has been sent."
+        "If an account exists for that email, a password reset code has been sent."
     )
 
 

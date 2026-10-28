@@ -1,4 +1,3 @@
-
 import hashlib
 import hmac
 import secrets
@@ -12,11 +11,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.security import (
-    AuthenticationError,
-    RESET_TOKEN,
     ValidationFailedError,
-    create_reset_token,
-    decode_token,
     hash_password,
     validate_password_strength,
     verify_password,
@@ -45,6 +40,7 @@ REQUIRED_UPDATE_FIELDS = (
 _reset_codes = {}
 _reset_codes_lock = threading.Lock()
 _RESET_CODE_TTL = 900
+
 
 class UserService:
     def check_active(self, current_user: User) -> None:
@@ -447,11 +443,11 @@ class UserService:
                 }
 
             try:
-               send_password_reset_email(
-                recipient=user.email,
-                first_name=user.first_name,
-                reset_code=code,
-            )
+                send_password_reset_email(
+                    recipient=user.email,
+                    first_name=user.first_name,
+                    reset_code=code,
+                )
             except Exception as error:
                 with _reset_codes_lock:
                     _reset_codes.pop(user.email, None)

@@ -196,9 +196,7 @@ def sample_alert(db_session, sample_zone, sample_reading):
 
 
 @pytest.fixture
-def sample_assignment(
-    db_session, sample_alert, sample_officer, sample_coordinator
-):
+def sample_assignment(db_session, sample_alert, sample_officer, sample_coordinator):
     now = datetime.now(timezone.utc)
     assignment = AlertAssignment(
         alert_id=sample_alert.alert_id,
@@ -247,9 +245,7 @@ def make_inspection(
 def sample_inspection(
     db_session, sample_officer, sample_zone, sample_alert, sample_assignment
 ):
-    return make_inspection(
-        db_session, sample_officer, sample_zone, sample_alert
-    )
+    return make_inspection(db_session, sample_officer, sample_zone, sample_alert)
 
 
 @pytest.fixture

@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.security import (
-    create_access_token,
     register_error_handlers,
     verify_password,
 )
@@ -59,9 +58,7 @@ def client(db_session):
 
 
 class TestForgotPasswordRouter:
-    def test_forgot_password_sends_email(
-        self, client, db_session, monkeypatch
-    ):
+    def test_forgot_password_sends_email(self, client, db_session, monkeypatch):
         make_user(
             db_session,
             "tendai@example.org",
@@ -76,9 +73,7 @@ class TestForgotPasswordRouter:
         def fake_send(recipient, first_name, reset_code):
             calls.append((recipient, first_name, reset_code))
 
-        monkeypatch.setattr(
-            "services.user.send_password_reset_email", fake_send
-        )
+        monkeypatch.setattr("services.user.send_password_reset_email", fake_send)
 
         response = client.post(
             f"{API}/forgot-password",
@@ -86,18 +81,14 @@ class TestForgotPasswordRouter:
         )
 
         assert response.status_code == 200
-        assert response.json()["message"].startswith(
-            "If an account exists"
-        )
+        assert response.json()["message"].startswith("If an account exists")
         assert len(calls) == 1
         assert calls[0][0] == "tendai@example.org"
         assert calls[0][1] == "Tendai"
         assert len(calls[0][2]) == 6
         assert calls[0][2].isdigit()
 
-    def test_forgot_password_unknown_email(
-        self, client, db_session, monkeypatch
-    ):
+    def test_forgot_password_unknown_email(self, client, db_session, monkeypatch):
         calls = []
         monkeypatch.setattr(
             "services.user.send_password_reset_email",
@@ -112,14 +103,10 @@ class TestForgotPasswordRouter:
         )
 
         assert response.status_code == 200
-        assert response.json()["message"].startswith(
-            "If an account exists"
-        )
+        assert response.json()["message"].startswith("If an account exists")
         assert calls == []
 
-    def test_forgot_password_inactive_user(
-        self, client, db_session, monkeypatch
-    ):
+    def test_forgot_password_inactive_user(self, client, db_session, monkeypatch):
         user = make_user(
             db_session,
             "inactive@example.org",
@@ -149,9 +136,7 @@ class TestForgotPasswordRouter:
 
 
 class TestResetPasswordRouter:
-    def test_reset_password_happy_path(
-        self, client, db_session, monkeypatch
-    ):
+    def test_reset_password_happy_path(self, client, db_session, monkeypatch):
         user = make_user(
             db_session,
             "reset@example.org",
@@ -166,9 +151,7 @@ class TestResetPasswordRouter:
         def fake_send(recipient, first_name, reset_code):
             sent["code"] = reset_code
 
-        monkeypatch.setattr(
-            "services.user.send_password_reset_email", fake_send
-        )
+        monkeypatch.setattr("services.user.send_password_reset_email", fake_send)
 
         forgot = client.post(
             f"{API}/forgot-password",
@@ -187,9 +170,7 @@ class TestResetPasswordRouter:
         )
 
         assert response.status_code == 200, response.text
-        assert response.json() == {
-            "message": "Password has been reset successfully."
-        }
+        assert response.json() == {"message": "Password has been reset successfully."}
         assert verify_password(STRONG_PASSWORD, user.password_hash)
 
     def test_reset_password_invalid_code(self, client, db_session):
@@ -245,9 +226,7 @@ class TestResetPasswordRouter:
 
         assert response.status_code == 400
 
-    def test_reset_password_weak_password(
-        self, client, db_session, monkeypatch
-    ):
+    def test_reset_password_weak_password(self, client, db_session, monkeypatch):
         make_user(
             db_session,
             "weak@example.org",
@@ -262,9 +241,7 @@ class TestResetPasswordRouter:
         def fake_send(recipient, first_name, reset_code):
             sent["code"] = reset_code
 
-        monkeypatch.setattr(
-            "services.user.send_password_reset_email", fake_send
-        )
+        monkeypatch.setattr("services.user.send_password_reset_email", fake_send)
 
         forgot = client.post(
             f"{API}/forgot-password",

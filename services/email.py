@@ -42,7 +42,6 @@ If you did not expect this email, contact your patrol coordinator.
         server.send_message(message)
 
 
-
 def send_password_reset_email(
     recipient: str,
     first_name: str,
@@ -74,9 +73,7 @@ If you did not request this, you can ignore this email.
 
     smtp_password = settings.smtp_password.get_secret_value()
 
-    with smtplib.SMTP(
-        settings.smtp_host, settings.smtp_port, timeout=15
-    ) as server:
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
         server.starttls()
         server.login(settings.smtp_username, smtp_password)
         server.send_message(message)
