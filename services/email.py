@@ -21,7 +21,7 @@ def _send_email(
 
     resend.Emails.send(
         {
-            "from": "Vesper <onboarding@resend.dev>",
+            "from": "Vesper <noreply@your-verified-domain.com>",
             "to": [recipient],
             "subject": subject,
             "text": text,

@@ -256,18 +256,11 @@ class UserService:
                 first_name=user.first_name,
                 password=data.password,
             )
-        except Exception as error:
+        except Exception:
             logger.exception(
-                "Officer account created, but credential email failed for user %s",
+                "Officer account %s was created, but credential email failed",
                 user.user_id,
             )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "The account was created, but the email could not be sent. "
-                    "Check the email configuration before retrying."
-                ),
-            ) from error
 
         return self.to_read(user)
 
