@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_settings
-from core.security import register_error_handlers
 from database import init_db
 from routers.auth import router as auth_router
 from routers.user import router as user_router
@@ -11,11 +10,12 @@ from routers.catch_check import router as catch_check_router
 from routers.inspection import router as inspection_router
 from routers.zone import router as zone_router
 from routers.violation_report import router as violation_report_router
+from core.security import apply_security
 
 settings = get_settings()
 
 app = FastAPI(title="Vesper", version="0.1.0")
-register_error_handlers(app)
+apply_security(app, settings)
 
 init_db()
 
@@ -30,11 +30,11 @@ app.include_router(zone_setting_history_router, prefix="/api")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/health")
 def health_check():

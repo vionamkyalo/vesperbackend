@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+
 from core.config import Settings, get_settings, redact
 from database import get_db
 from models.user import User, UserRole
@@ -496,8 +497,13 @@ def apply_security(app: FastAPI, settings: Settings) -> None:
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Request-ID",
+            "ngrok-skip-browser-warning",
+        ],
         expose_headers=["X-Request-ID"],
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
