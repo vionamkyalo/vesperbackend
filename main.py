@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_settings
 from core.security import register_error_handlers
@@ -38,18 +37,6 @@ app.include_router(violation_report_router, prefix="/api/violation-reports")
 app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
 app.include_router(zone_light_reading_router, prefix="/api/zone-light-readings")
-
-origins = settings.cors_allowed_origins
-if isinstance(origins, str):
-    origins = [o.strip() for o in origins.split(",")]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @app.get("/health")
