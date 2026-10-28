@@ -1,7 +1,32 @@
-import smtplib
-from email.message import EmailMessage
+import resend
 
 from core.config import get_settings
+
+
+def _send_email(
+    recipient: str,
+    subject: str,
+    text: str,
+) -> None:
+    settings = get_settings()
+    api_key = settings.resend_api_key
+
+    if not api_key:
+        raise RuntimeError("RESEND_API_KEY is not configured")
+
+    if hasattr(api_key, "get_secret_value"):
+        api_key = api_key.get_secret_value()
+
+    resend.api_key = api_key
+
+    resend.Emails.send(
+        {
+            "from": "Vesper <onboarding@resend.dev>",
+            "to": [recipient],
+            "subject": subject,
+            "text": text,
+        }
+    )
 
 
 def send_officer_credentials(
@@ -9,18 +34,10 @@ def send_officer_credentials(
     first_name: str,
     password: str,
 ) -> None:
-    settings = get_settings()
-
-    if not settings.smtp_host or not settings.smtp_username:
-        raise RuntimeError("SMTP email settings are not configured")
-
-    message = EmailMessage()
-    message["Subject"] = "Your Vesper patrol account"
-    message["From"] = settings.email_from or settings.smtp_username
-    message["To"] = recipient
-
-    message.set_content(
-        f"""Hello {first_name},
+    _send_email(
+        recipient=recipient,
+        subject="Your Vesper patrol account",
+        text=f"""Hello {first_name},
 
 Your Vesper patrol account has been created.
 
@@ -31,15 +48,8 @@ Please log in and change your password as soon as possible.
 Do not share these credentials with anyone.
 
 If you did not expect this email, contact your patrol coordinator.
-"""
+""",
     )
-
-    smtp_password = settings.smtp_password.get_secret_value()
-
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
-        server.starttls()
-        server.login(settings.smtp_username, smtp_password)
-        server.send_message(message)
 
 
 def send_password_reset_email(
@@ -47,17 +57,10 @@ def send_password_reset_email(
     first_name: str,
     reset_code: str,
 ) -> None:
-    settings = get_settings()
-
-    if not settings.smtp_host or not settings.smtp_username:
-        raise RuntimeError("SMTP email settings are not configured")
-
-    message = EmailMessage()
-    message["Subject"] = "Your Vesper password reset code"
-    message["From"] = settings.email_from or settings.smtp_username
-    message["To"] = recipient
-
-    message.set_content(f"""Hello {first_name},
+    _send_email(
+        recipient=recipient,
+        subject="Your Vesper password reset code",
+        text=f"""Hello {first_name},
 
 You requested a password reset for your Vesper account.
 
@@ -69,11 +72,5 @@ This code expires in 15 minutes.
 
 Enter this code in the Vesper app to reset your password.
 If you did not request this, you can ignore this email.
-""")
-
-    smtp_password = settings.smtp_password.get_secret_value()
-
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as server:
-        server.starttls()
-        server.login(settings.smtp_username, smtp_password)
-        server.send_message(message)
+""",
+    )

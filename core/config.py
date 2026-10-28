@@ -84,11 +84,7 @@ class Settings(BaseSettings):
     kariba_bbox: list[float] = [26.5, -18.6, 29.5, -16.3]
     min_clear_fraction: float = 0.3
 
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: SecretStr = SecretStr("")
-    email_from: str = ""
+   
     frontend_url: str = "http://localhost:3000"
     resend_api_key: SecretStr = SecretStr("")
 
