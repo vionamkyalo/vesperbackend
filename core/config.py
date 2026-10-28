@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,13 +34,12 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
-    cors_allowed_origins: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:40029",
-        "http://127.0.0.1:40029",
-    ]
+    cors_allowed_origins: list[str] = []
 
-    CORS_ORIGINS: str | list[str] = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_allowed_origin_regex: str | None = (
+        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    )
+
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     max_request_bytes: int = 1_000_000
     api_rate_limit_per_minute: int = 120
@@ -84,8 +83,8 @@ class Settings(BaseSettings):
     kariba_bbox: list[float] = [26.5, -18.6, 29.5, -16.3]
     min_clear_fraction: float = 0.3
 
-    frontend_url: str = "http://localhost:3000"
     resend_api_key: SecretStr = SecretStr("")
+    email_from: str = "Vesper <onboarding@resend.dev>"
 
     @property
     def is_production(self) -> bool:
