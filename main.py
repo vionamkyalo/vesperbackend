@@ -39,7 +39,7 @@ app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
 app.include_router(zone_light_reading_router, prefix="/api/zone-light-readings")
 
-origins = settings.CORS_ORIGINS
+origins = settings.cors_allowed_origins
 if isinstance(origins, str):
     origins = [o.strip() for o in origins.split(",")]
 
@@ -54,5 +54,4 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-
     return {"status": "ok"}
