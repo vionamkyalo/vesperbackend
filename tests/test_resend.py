@@ -1,4 +1,3 @@
-
 import resend
 
 from core.config import get_settings
@@ -23,9 +22,7 @@ def _send_email(recipient: str, subject: str, text: str) -> None:
     )
 
 
-def send_officer_credentials(
-    recipient: str, first_name: str, password: str
-) -> None:
+def send_officer_credentials(recipient: str, first_name: str, password: str) -> None:
     _send_email(
         recipient=recipient,
         subject="Your Vesper patrol account",
@@ -39,9 +36,7 @@ def send_officer_credentials(
     )
 
 
-def send_password_reset_email(
-    recipient: str, first_name: str, reset_code: str
-) -> None:
+def send_password_reset_email(recipient: str, first_name: str, reset_code: str) -> None:
     _send_email(
         recipient=recipient,
         subject="Your Vesper password reset code",

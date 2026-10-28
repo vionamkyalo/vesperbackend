@@ -84,7 +84,6 @@ class Settings(BaseSettings):
     kariba_bbox: list[float] = [26.5, -18.6, 29.5, -16.3]
     min_clear_fraction: float = 0.3
 
-   
     frontend_url: str = "http://localhost:3000"
     resend_api_key: SecretStr = SecretStr("")
 
