@@ -82,7 +82,7 @@ def login(
 
     user = user_repository.get_by_email(db, email)
 
-    # Verify the password even when the email does not exist.
+  
     password_valid = verify_password(
         body.password,
         user.password_hash if user is not None else None,

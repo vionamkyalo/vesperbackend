@@ -83,8 +83,11 @@ class Settings(BaseSettings):
     kariba_bbox: list[float] = [26.5, -18.6, 29.5, -16.3]
     min_clear_fraction: float = 0.3
 
-    resend_api_key: SecretStr = SecretStr("")
-    email_from: str = "Vesper <onboarding@resend.dev>"
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    email_from: str = ""
 
     @property
     def is_production(self) -> bool:
