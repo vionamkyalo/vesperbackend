@@ -29,3 +29,4 @@ class ZoneBaseline(Base):
     spread = Column(Numeric(12, 4), nullable=False, default=1)
 
     zone = relationship("Zone", back_populates="baselines")
+

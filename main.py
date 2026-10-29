@@ -42,6 +42,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app = FastAPI(title="Vesper", version="0.1.0")
 
 
 @app.get("/health")
