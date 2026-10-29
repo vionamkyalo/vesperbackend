@@ -4,8 +4,8 @@ from sqlalchemy.orm import relationship
 from database import Base, UTCDateTime, utcnow
 
 
-class OfficerLocation(Base):
-    __tablename__ = "officer_location"
+class OfficerAssignment(Base):
+    __tablename__ = "officer_assignment"
 
     location_id = Column(Uuid, primary_key=True)
     officer_id = Column(ForeignKey("users.user_id"), nullable=False, index=True)

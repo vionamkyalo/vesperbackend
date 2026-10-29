@@ -13,54 +13,54 @@ from database import get_db
 from models.user import User
 from schemas.officer_assignment import (
     ArrivalCheckRead,
-    LocationListQuery,
-    LocationPurgeResult,
-    OfficerLocationCreate,
-    OfficerLocationPage,
-    OfficerLocationRead,
+    AssignmentListQuery,
+    AssignmentPurgeResult,
+    OfficerAssignmentCreate,
+    OfficerAssignmentPage,
+    OfficerAssignmentRead,
 )
-from services.officer_assignment import OfficerLocationService
+from services.officer_assignment import OfficerAssignmentService
 
 router = APIRouter(tags=["officer assignment"])
 
 
 @router.post(
     "",
-    response_model=OfficerLocationRead,
+    response_model=OfficerAssignmentRead,
     status_code=status.HTTP_201_CREATED,
 )
 def record_location(
-    data: OfficerLocationCreate,
+    data: OfficerAssignmentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer),
 ):
-    return OfficerLocationService(db).record_location(data, current_user)
+    return OfficerAssignmentService(db).record_location(data, current_user)
 
 
-@router.get("/me", response_model=OfficerLocationPage)
+@router.get("/me", response_model=OfficerAssignmentPage)
 def list_my_locations(
-    query: Annotated[LocationListQuery, Query()],
+    query: Annotated[AssignmentListQuery, Query()],
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer),
 ):
-    return OfficerLocationService(db).list_my_locations(current_user, query)
+    return OfficerAssignmentService(db).list_my_locations(current_user, query)
 
 
-@router.get("", response_model=OfficerLocationPage)
+@router.get("", response_model=OfficerAssignmentPage)
 def list_locations(
-    query: Annotated[LocationListQuery, Query()],
+    query: Annotated[AssignmentListQuery, Query()],
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return OfficerLocationService(db).list_locations(query)
+    return OfficerAssignmentService(db).list_locations(query)
 
 
-@router.get("/latest", response_model=list[OfficerLocationRead])
+@router.get("/latest", response_model=list[OfficerAssignmentRead])
 def latest_locations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return OfficerLocationService(db).latest_locations()
+    return OfficerAssignmentService(db).latest_locations()
 
 
 @router.get("/arrival-check/{alert_id}", response_model=ArrivalCheckRead)
@@ -69,21 +69,21 @@ def check_arrival(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return OfficerLocationService(db).check_arrival(alert_id, current_user)
+    return OfficerAssignmentService(db).check_arrival(alert_id, current_user)
 
 
-@router.post("/retention/purge", response_model=LocationPurgeResult)
+@router.post("/retention/purge", response_model=AssignmentPurgeResult)
 def purge_expired_locations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_coordinator),
 ):
-    return OfficerLocationService(db).purge_expired_locations(current_user)
+    return OfficerAssignmentService(db).purge_expired_locations(current_user)
 
 
-@router.get("/{location_id}", response_model=OfficerLocationRead)
+@router.get("/{location_id}", response_model=OfficerAssignmentRead)
 def get_location(
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return OfficerLocationService(db).get_location(location_id, current_user)
+    return OfficerAssignmentService(db).get_location(location_id, current_user)

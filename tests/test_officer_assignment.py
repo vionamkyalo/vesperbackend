@@ -15,9 +15,9 @@ import models.zone_setting_history  # noqa: F401
 from core.config import get_settings
 from core.security import create_access_token
 from models.alert import Alert, AlertStatus
-from models.officer_assignment import OfficerLocation
-from repositories.officer_assignment import OfficerLocationRepository
-from schemas.officer_assignment import OfficerLocationCreate
+from models.officer_assignment import OfficerAssignment
+from repositories.officer_assignment import OfficerAssignmentRepository
+from schemas.officer_assignment import OfficerAssignmentCreate
 from services.officer_assignment import (
     evaluate_jump,
     haversine_m,
@@ -118,7 +118,7 @@ def make_location(db_session):
         alert=None,
         accuracy_m=None,
     ):
-        location = OfficerLocation(
+        location = OfficerAssignment(
             location_id=uuid.uuid4(),
             officer_id=officer.user_id,
             alert_id=alert.alert_id if alert else None,
@@ -196,13 +196,13 @@ def create_payload(**overrides):
     return body
 
 
-class TestOfficerLocation:
+class TestOfficerAssignment:
     def test_create_officer_location_happy_path(
         self, db_session, sample_officer, sample_alert
     ):
         location_id = uuid.uuid4()
         recorded_at = datetime(2026, 10, 10, 21, 45, tzinfo=timezone.utc)
-        location = OfficerLocation(
+        location = OfficerAssignment(
             location_id=location_id,
             officer_id=sample_officer.user_id,
             alert_id=sample_alert.alert_id,
@@ -226,7 +226,7 @@ class TestOfficerLocation:
         assert location.synced_at is not None
 
     def test_officer_location_optional_fields(self, db_session, sample_officer):
-        location = OfficerLocation(
+        location = OfficerAssignment(
             location_id=uuid.uuid4(),
             officer_id=sample_officer.user_id,
             latitude=Decimal("-16.80"),
@@ -242,7 +242,7 @@ class TestOfficerLocation:
         assert location.synced_at is not None
 
     def test_officer_location_missing_required_fields(self, db_session):
-        location = OfficerLocation(location_id=uuid.uuid4())
+        location = OfficerAssignment(location_id=uuid.uuid4())
         db_session.add(location)
 
         with pytest.raises(IntegrityError):
@@ -251,7 +251,7 @@ class TestOfficerLocation:
         db_session.rollback()
 
     def test_officer_location_missing_officer_id(self, db_session):
-        location = OfficerLocation(
+        location = OfficerAssignment(
             location_id=uuid.uuid4(),
             latitude=Decimal("-16.80"),
             longitude=Decimal("28.00"),
@@ -265,7 +265,7 @@ class TestOfficerLocation:
         db_session.rollback()
 
     def test_officer_location_missing_latitude(self, db_session, sample_officer):
-        location = OfficerLocation(
+        location = OfficerAssignment(
             location_id=uuid.uuid4(),
             officer_id=sample_officer.user_id,
             longitude=Decimal("28.00"),
@@ -304,7 +304,7 @@ class FakeFix:
 
 class TestLocationSchemas:
     def test_valid_create_normalises_to_utc(self):
-        fix = OfficerLocationCreate(
+        fix = OfficerAssignmentCreate(
             **create_payload(recorded_at="2026-10-10T23:45:00+02:00")
         )
         assert fix.latitude == Decimal("-16.851000")
@@ -321,32 +321,32 @@ class TestLocationSchemas:
     )
     def test_invalid_values_rejected(self, field, value):
         with pytest.raises(ValidationError):
-            OfficerLocationCreate(**create_payload(**{field: value}))
+            OfficerAssignmentCreate(**create_payload(**{field: value}))
 
     def test_server_fields_forbidden(self):
         with pytest.raises(ValidationError):
-            OfficerLocationCreate(**create_payload(officer_id=str(uuid.uuid4())))
+            OfficerAssignmentCreate(**create_payload(officer_id=str(uuid.uuid4())))
 
     def test_accuracy_is_optional(self):
         payload = create_payload()
         del payload["accuracy_m"]
-        assert OfficerLocationCreate(**payload).accuracy_m is None
+        assert OfficerAssignmentCreate(**payload).accuracy_m is None
 
     def test_location_id_cannot_be_supplied(self):
         with pytest.raises(ValidationError):
-            OfficerLocationCreate(**create_payload(location_id=str(uuid.uuid4())))
+            OfficerAssignmentCreate(**create_payload(location_id=str(uuid.uuid4())))
 
 
 class TestLocationRepository:
     @pytest.fixture
     def repo(self, db_session):
-        return OfficerLocationRepository(db_session)
+        return OfficerAssignmentRepository(db_session)
 
     def test_create_and_duplicate_id(self, repo, sample_officer):
         loc_id = uuid.uuid4()
 
         def build():
-            return OfficerLocation(
+            return OfficerAssignment(
                 location_id=loc_id,
                 officer_id=sample_officer.user_id,
                 latitude=Decimal("-16.85"),

@@ -8,16 +8,16 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from models.officer_assignment import OfficerLocation
+from models.officer_assignment import OfficerAssignment
 from models.user import User, UserRole
-from repositories.officer_assignment import OfficerLocationRepository
+from repositories.officer_assignment import OfficerAssignmentRepository
 from schemas.officer_assignment import (
     ArrivalCheckRead,
-    LocationListQuery,
-    LocationPurgeResult,
-    OfficerLocationCreate,
-    OfficerLocationPage,
-    OfficerLocationRead,
+    AssignmentListQuery,
+    AssignmentPurgeResult,
+    OfficerAssignmentCreate,
+    OfficerAssignmentPage,
+    OfficerAssignmentRead,
 )
 
 audit_log = logging.getLogger("vesper.audit")
@@ -47,7 +47,7 @@ def _utcnow() -> datetime:
 
 
 def evaluate_jump(
-    previous: OfficerLocation | None, current: OfficerLocation, max_speed_kmh: float
+    previous: OfficerAssignment | None, current: OfficerAssignment, max_speed_kmh: float
 ) -> tuple[bool, float | None]:
     if previous is None:
         return False, None
@@ -66,13 +66,13 @@ def evaluate_jump(
     return speed_kmh > max_speed_kmh, round(speed_kmh, 2)
 
 
-class OfficerLocationService:
+class OfficerAssignmentService:
     def __init__(self, db: Session):
-        self.repo = OfficerLocationRepository(db)
+        self.repo = OfficerAssignmentRepository(db)
 
-    def _annotate_jumps(self, locations: list[OfficerLocation]) -> None:
+    def _annotate_jumps(self, locations: list[OfficerAssignment]) -> None:
         max_speed = get_settings().max_officer_speed_kmh
-        by_officer: dict[uuid.UUID, list[OfficerLocation]] = {}
+        by_officer: dict[uuid.UUID, list[OfficerAssignment]] = {}
         for location in locations:
             by_officer.setdefault(location.officer_id, []).append(location)
 
@@ -89,11 +89,11 @@ class OfficerLocationService:
                 previous = fix
 
     def _to_page(
-        self, items: list[OfficerLocation], total: int, skip: int, limit: int
-    ) -> OfficerLocationPage:
+        self, items: list[OfficerAssignment], total: int, skip: int, limit: int
+    ) -> OfficerAssignmentPage:
         self._annotate_jumps(items)
-        return OfficerLocationPage(
-            items=[OfficerLocationRead.model_validate(item) for item in items],
+        return OfficerAssignmentPage(
+            items=[OfficerAssignmentRead.model_validate(item) for item in items],
             total=total,
             skip=skip,
             limit=limit,
@@ -101,10 +101,10 @@ class OfficerLocationService:
 
     def record_location(
         self,
-        data: OfficerLocationCreate,
+        data: OfficerAssignmentCreate,
         officer: User,
         now: datetime | None = None,
-    ) -> OfficerLocation:
+    ) -> OfficerAssignment:
 
         settings = get_settings()
         now = now or _utcnow()
@@ -130,7 +130,7 @@ class OfficerLocationService:
                 )
 
         # location_id is never accepted from the client: the server generates it.
-        location = OfficerLocation(
+        location = OfficerAssignment(
             location_id=uuid.uuid4(),
             officer_id=officer.user_id,
             alert_id=data.alert_id,
@@ -152,24 +152,24 @@ class OfficerLocationService:
         return location
 
     def list_my_locations(
-        self, officer: User, query: LocationListQuery
-    ) -> OfficerLocationPage:
+        self, officer: User, query: AssignmentListQuery
+    ) -> OfficerAssignmentPage:
         own_query = query.model_copy(update={"officer_id": officer.user_id})
         items, total = self.repo.list_filtered(own_query)
         return self._to_page(items, total, query.skip, query.limit)
 
-    def list_locations(self, query: LocationListQuery) -> OfficerLocationPage:
+    def list_locations(self, query: AssignmentListQuery) -> OfficerAssignmentPage:
         items, total = self.repo.list_filtered(query)
         return self._to_page(items, total, query.skip, query.limit)
 
-    def latest_locations(self) -> list[OfficerLocation]:
+    def latest_locations(self) -> list[OfficerAssignment]:
         items = self.repo.latest_per_officer()
         self._annotate_jumps(items)
         return items
 
     def get_location(
         self, location_id: uuid.UUID, current_user: User
-    ) -> OfficerLocation:
+    ) -> OfficerAssignment:
         location = self.repo.get_by_id(location_id)
 
         if location is None or (
@@ -245,7 +245,7 @@ class OfficerLocationService:
 
     def purge_expired_locations(
         self, current_user: User | None = None, now: datetime | None = None
-    ) -> LocationPurgeResult:
+    ) -> AssignmentPurgeResult:
 
         settings = get_settings()
         now = now or _utcnow()
@@ -270,4 +270,4 @@ class OfficerLocationService:
             cutoff.isoformat(),
             current_user.user_id if current_user else "scheduler",
         )
-        return LocationPurgeResult(deleted_count=deleted, cutoff=cutoff)
+        return AssignmentPurgeResult(deleted_count=deleted, cutoff=cutoff)

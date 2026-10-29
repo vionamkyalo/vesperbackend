@@ -7,19 +7,19 @@ from sqlalchemy.orm import Session
 
 from models.alert import Alert, AlertStatus
 from models.alert_assignment import AlertAssignment
-from models.officer_assignment import OfficerLocation
-from schemas.officer_assignment import LocationListQuery
+from models.officer_assignment import OfficerAssignment
+from schemas.officer_assignment import AssignmentListQuery
 
 FINISHED_ALERT_STATUSES = (AlertStatus.CLOSED, AlertStatus.DISMISSED)
 _DELETE_CHUNK = 500
 
 
-class OfficerLocationRepository:
+class OfficerAssignmentRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_by_id(self, location_id: uuid.UUID) -> OfficerLocation | None:
-        return self.db.get(OfficerLocation, location_id)
+    def get_by_id(self, location_id: uuid.UUID) -> OfficerAssignment | None:
+        return self.db.get(OfficerAssignment, location_id)
 
     def get_alert(self, alert_id: uuid.UUID) -> Alert | None:
         return self.db.get(Alert, alert_id)
@@ -29,15 +29,15 @@ class OfficerLocationRepository:
         officer_id: uuid.UUID,
         at_or_before: datetime,
         exclude_location_id: uuid.UUID | None = None,
-    ) -> OfficerLocation | None:
-        q = self.db.query(OfficerLocation).filter(
-            OfficerLocation.officer_id == officer_id,
-            OfficerLocation.recorded_at <= at_or_before,
+    ) -> OfficerAssignment | None:
+        q = self.db.query(OfficerAssignment).filter(
+            OfficerAssignment.officer_id == officer_id,
+            OfficerAssignment.recorded_at <= at_or_before,
         )
         if exclude_location_id is not None:
-            q = q.filter(OfficerLocation.location_id != exclude_location_id)
+            q = q.filter(OfficerAssignment.location_id != exclude_location_id)
         return q.order_by(
-            OfficerLocation.recorded_at.desc(), OfficerLocation.synced_at.desc()
+            OfficerAssignment.recorded_at.desc(), OfficerAssignment.synced_at.desc()
         ).first()
 
     def officer_was_assigned(self, alert: Alert, officer_id: uuid.UUID) -> bool:
@@ -55,21 +55,22 @@ class OfficerLocationRepository:
         )
 
     def list_filtered(
-        self, query: LocationListQuery
-    ) -> tuple[list[OfficerLocation], int]:
-        q = self.db.query(OfficerLocation)
+        self, query: AssignmentListQuery
+    ) -> tuple[list[OfficerAssignment], int]:
+        q = self.db.query(OfficerAssignment)
         if query.officer_id is not None:
-            q = q.filter(OfficerLocation.officer_id == query.officer_id)
+            q = q.filter(OfficerAssignment.officer_id == query.officer_id)
         if query.alert_id is not None:
-            q = q.filter(OfficerLocation.alert_id == query.alert_id)
+            q = q.filter(OfficerAssignment.alert_id == query.alert_id)
         if query.recorded_from is not None:
-            q = q.filter(OfficerLocation.recorded_at >= query.recorded_from)
+            q = q.filter(OfficerAssignment.recorded_at >= query.recorded_from)
         if query.recorded_to is not None:
-            q = q.filter(OfficerLocation.recorded_at <= query.recorded_to)
+            q = q.filter(OfficerAssignment.recorded_at <= query.recorded_to)
         total = q.count()
         items = (
             q.order_by(
-                OfficerLocation.recorded_at.desc(), OfficerLocation.location_id.desc()
+                OfficerAssignment.recorded_at.desc(),
+                OfficerAssignment.location_id.desc(),
             )
             .offset(query.skip)
             .limit(query.limit)
@@ -79,29 +80,31 @@ class OfficerLocationRepository:
 
     def list_for_alert(
         self, alert_id: uuid.UUID, officer_id: uuid.UUID | None = None
-    ) -> list[OfficerLocation]:
-        q = self.db.query(OfficerLocation).filter(OfficerLocation.alert_id == alert_id)
+    ) -> list[OfficerAssignment]:
+        q = self.db.query(OfficerAssignment).filter(
+            OfficerAssignment.alert_id == alert_id
+        )
         if officer_id is not None:
-            q = q.filter(OfficerLocation.officer_id == officer_id)
-        return q.order_by(OfficerLocation.recorded_at.asc()).all()
+            q = q.filter(OfficerAssignment.officer_id == officer_id)
+        return q.order_by(OfficerAssignment.recorded_at.asc()).all()
 
-    def latest_per_officer(self) -> list[OfficerLocation]:
+    def latest_per_officer(self) -> list[OfficerAssignment]:
         latest = (
             self.db.query(
-                OfficerLocation.officer_id.label("officer_id"),
-                func.max(OfficerLocation.recorded_at).label("latest_at"),
+                OfficerAssignment.officer_id.label("officer_id"),
+                func.max(OfficerAssignment.recorded_at).label("latest_at"),
             )
-            .group_by(OfficerLocation.officer_id)
+            .group_by(OfficerAssignment.officer_id)
             .subquery()
         )
         rows = (
-            self.db.query(OfficerLocation)
+            self.db.query(OfficerAssignment)
             .join(
                 latest,
-                (OfficerLocation.officer_id == latest.c.officer_id)
-                & (OfficerLocation.recorded_at == latest.c.latest_at),
+                (OfficerAssignment.officer_id == latest.c.officer_id)
+                & (OfficerAssignment.recorded_at == latest.c.latest_at),
             )
-            .order_by(OfficerLocation.recorded_at.desc())
+            .order_by(OfficerAssignment.recorded_at.desc())
             .all()
         )
 
@@ -115,23 +118,24 @@ class OfficerLocationRepository:
 
     def list_unlinked_older_than(self, cutoff: datetime) -> list[uuid.UUID]:
         rows = (
-            self.db.query(OfficerLocation.location_id)
+            self.db.query(OfficerAssignment.location_id)
             .filter(
-                OfficerLocation.alert_id.is_(None), OfficerLocation.recorded_at < cutoff
+                OfficerAssignment.alert_id.is_(None),
+                OfficerAssignment.recorded_at < cutoff,
             )
             .all()
         )
         return [row[0] for row in rows]
 
-    def list_linked_to_finished_alerts(self) -> list[tuple[OfficerLocation, Alert]]:
+    def list_linked_to_finished_alerts(self) -> list[tuple[OfficerAssignment, Alert]]:
         return (
-            self.db.query(OfficerLocation, Alert)
-            .join(Alert, OfficerLocation.alert_id == Alert.alert_id)
+            self.db.query(OfficerAssignment, Alert)
+            .join(Alert, OfficerAssignment.alert_id == Alert.alert_id)
             .filter(Alert.status.in_(FINISHED_ALERT_STATUSES))
             .all()
         )
 
-    def create(self, location: OfficerLocation) -> OfficerLocation:
+    def create(self, location: OfficerAssignment) -> OfficerAssignment:
         self.db.add(location)
         try:
             self.db.commit()
@@ -146,8 +150,8 @@ class OfficerLocationRepository:
         for start in range(0, len(location_ids), _DELETE_CHUNK):
             chunk = location_ids[start : start + _DELETE_CHUNK]
             deleted += (
-                self.db.query(OfficerLocation)
-                .filter(OfficerLocation.location_id.in_(chunk))
+                self.db.query(OfficerAssignment)
+                .filter(OfficerAssignment.location_id.in_(chunk))
                 .delete(synchronize_session=False)
             )
         self.db.commit()

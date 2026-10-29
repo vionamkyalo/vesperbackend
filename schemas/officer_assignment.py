@@ -16,7 +16,6 @@ from pydantic import (
 
 
 def _rounded_to(places: int):
-
     step = Decimal(1).scaleb(-places)
 
     def _round(value: Decimal) -> Decimal:
@@ -48,12 +47,11 @@ AccuracyMetres = Annotated[
     _AS_JSON_NUMBER,
 ]
 
-
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 500
 
 
-class OfficerLocationCreate(BaseModel):
+class OfficerAssignmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     alert_id: uuid.UUID | None = None
@@ -68,7 +66,7 @@ class OfficerLocationCreate(BaseModel):
         return value.astimezone(timezone.utc)
 
 
-class LocationListQuery(BaseModel):
+class AssignmentListQuery(BaseModel):
     officer_id: uuid.UUID | None = None
     alert_id: uuid.UUID | None = None
     recorded_from: AwareDatetime | None = None
@@ -77,14 +75,14 @@ class LocationListQuery(BaseModel):
     limit: int = Field(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE)
 
     @model_validator(mode="after")
-    def check_time_range(self) -> "LocationListQuery":
+    def check_time_range(self) -> "AssignmentListQuery":
         if self.recorded_from and self.recorded_to:
             if self.recorded_from > self.recorded_to:
                 raise ValueError("recorded_from must be on or before recorded_to")
         return self
 
 
-class OfficerLocationRead(BaseModel):
+class OfficerAssignmentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     location_id: uuid.UUID
@@ -99,8 +97,8 @@ class OfficerLocationRead(BaseModel):
     speed_from_previous_kmh: float | None = None
 
 
-class OfficerLocationPage(BaseModel):
-    items: list[OfficerLocationRead]
+class OfficerAssignmentPage(BaseModel):
+    items: list[OfficerAssignmentRead]
     total: int
     skip: int
     limit: int
@@ -118,6 +116,6 @@ class ArrivalCheckRead(BaseModel):
     positions_ignored_as_jumps: int
 
 
-class LocationPurgeResult(BaseModel):
+class AssignmentPurgeResult(BaseModel):
     deleted_count: int
     cutoff: datetime

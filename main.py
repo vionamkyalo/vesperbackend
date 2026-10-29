@@ -12,7 +12,7 @@ from routers.zone_setting_history import router as zone_setting_history_router
 from routers.catch_check import router as catch_check_router
 from routers.inspection import router as inspection_router
 from routers.violation_report import router as violation_report_router
-from routers.officer_location import router as location_officer_router
+from routers.officer_assignment import router as officer_assignment_router
 from routers.alert import router as alert_router
 from routers.zone_baseline import router as zone_baseline_router
 from routers.detection import router as detection_router
@@ -36,7 +36,7 @@ app.include_router(zone_baseline_router, prefix="/api")
 app.include_router(detection_router, prefix="/api")
 app.include_router(catch_check_router, prefix="/api")
 app.include_router(violation_report_router, prefix="/api/violation-reports")
-app.include_router(location_officer_router, prefix="/api/officer-locations")
+app.include_router(officer_assignment_router, prefix="/api/officer-assignment")
 app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
 app.include_router(zone_light_reading_router, prefix="/api/zone-light-readings")
