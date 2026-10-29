@@ -1,3 +1,8 @@
+import hashlib
+import hmac
+import secrets
+import threading
+import time
 import logging
 import uuid
 
@@ -6,11 +11,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.security import (
+    AccountDeactivatedError,
     AuthenticationError,
-    RESET_TOKEN,
+    TooManyRequestsError,
     ValidationFailedError,
-    create_reset_token,
-    decode_token,
+    audit_log,
+    create_access_token,
+    create_refresh_token,
+    get_login_tracker,
     hash_password,
     validate_password_strength,
     verify_password,
@@ -21,6 +29,7 @@ from schemas.user import (
     ForgotPasswordResponse,
     PasswordChange,
     ResetPasswordResponse,
+    TokenResponse,
     UserCreate,
     UserRead,
     UserUpdate,
@@ -35,6 +44,10 @@ REQUIRED_UPDATE_FIELDS = (
     "phone_number",
     "is_active",
 )
+
+_reset_codes = {}
+_reset_codes_lock = threading.Lock()
+_RESET_CODE_TTL = 900
 
 
 class UserService:
@@ -251,18 +264,11 @@ class UserService:
                 first_name=user.first_name,
                 password=data.password,
             )
-        except Exception as error:
+        except Exception:
             logger.exception(
-                "Officer account created, but credential email failed for user %s",
+                "Officer account %s was created, but credential email failed",
                 user.user_id,
             )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "The account was created, but the email could not be sent. "
-                    "Check the email configuration before retrying."
-                ),
-            ) from error
 
         return self.to_read(user)
 
@@ -424,51 +430,127 @@ class UserService:
         self._commit(db)
         logger.info("Password changed for %s", current_user.user_id)
 
-    def forgot_password(self, db: Session, email: str) -> ForgotPasswordResponse:
+    def login(self, db: Session, email: str, password: str, ip: str) -> TokenResponse:
+        tracker = get_login_tracker()
+        email = email.strip().lower()
+        key = f"{ip}:{email}"
+
+        if tracker.is_locked(key):
+            audit_log(None, "login_blocked_locked", "user", email=email, ip=ip)
+            logger.warning("Login refused: too many failed attempts")
+            raise TooManyRequestsError()
+
         user = user_repository.get_by_email(db, email)
 
+        password_valid = verify_password(
+            password,
+            user.password_hash if user is not None else None,
+        )
+
+        if user is None or not password_valid:
+            tracker.record_failure(key)
+            audit_log(
+                user.user_id if user is not None else None,
+                "login_failed",
+                "user",
+                email=email,
+                ip=ip,
+            )
+            if tracker.is_locked(key):
+                audit_log(
+                    user.user_id if user is not None else None,
+                    "account_locked",
+                    "user",
+                    email=email,
+                    ip=ip,
+                )
+            logger.warning("Login refused: wrong email or password")
+            raise AuthenticationError()
+
+        if not user.is_active:
+            audit_log(user.user_id, "login_blocked_deactivated", "user", ip=ip)
+            logger.warning("Login refused: user %s is deactivated", user.user_id)
+            raise AccountDeactivatedError()
+
+        tracker.record_success(key)
+        audit_log(user.user_id, "login_success", "user", user.user_id, ip=ip)
+        logger.info("User %s signed in", user.user_id)
+
+        return TokenResponse(
+            access_token=create_access_token(user.user_id, user.role.value),
+            refresh_token=create_refresh_token(user.user_id),
+        )
+
+    def forgot_password(self, db: Session, email: str) -> ForgotPasswordResponse:
+        user = user_repository.get_by_email(db, email.lower())
+
         if user is not None and user.is_active:
-            token = create_reset_token(user.user_id)
+            code = f"{secrets.randbelow(1_000_000):06d}"
+
+            with _reset_codes_lock:
+                _reset_codes[user.email] = {
+                    "hash": hashlib.sha256(code.encode()).hexdigest(),
+                    "expires": time.time() + _RESET_CODE_TTL,
+                    "attempts": 0,
+                }
 
             try:
                 send_password_reset_email(
                     recipient=user.email,
                     first_name=user.first_name,
-                    reset_token=token,
+                    reset_code=code,
                 )
             except Exception as error:
-                logger.exception(
-                    "Password reset email failed for user %s", user.user_id
-                )
+                with _reset_codes_lock:
+                    _reset_codes.pop(user.email, None)
+                logger.exception("Password reset email failed")
                 raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=(
-                        "The reset token was created, but the email could not be "
-                        "sent. Check the email configuration before retrying."
-                    ),
+                    status_code=502,
+                    detail="Unable to send reset code. Please try again.",
                 ) from error
 
         return ForgotPasswordResponse()
 
     def reset_password(
-        self, db: Session, token: str, new_password: str
+        self,
+        db: Session,
+        email: str,
+        code: str,
+        new_password: str,
     ) -> ResetPasswordResponse:
         self.check_password_strength(new_password)
+        email = email.lower()
 
-        try:
-            payload = decode_token(token, RESET_TOKEN)
-            user_id = uuid.UUID(payload["sub"])
-        except AuthenticationError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired reset token.",
-            )
+        with _reset_codes_lock:
+            record = _reset_codes.get(email)
 
-        user = user_repository.get(db, user_id)
+            if (
+                record is None
+                or time.time() >= record["expires"]
+                or record["attempts"] >= 5
+            ):
+                _reset_codes.pop(email, None)
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired reset code.",
+                )
+
+            submitted_hash = hashlib.sha256(code.encode()).hexdigest()
+
+            if not hmac.compare_digest(record["hash"], submitted_hash):
+                record["attempts"] += 1
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired reset code.",
+                )
+
+            _reset_codes.pop(email, None)
+
+        user = user_repository.get_by_email(db, email)
         if user is None or not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired reset token.",
+                status_code=400,
+                detail="Invalid or expired reset code.",
             )
 
         user.password_hash = hash_password(new_password)

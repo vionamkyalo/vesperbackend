@@ -1,8 +1,9 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+
 
 from core.config import get_settings
-from core.security import register_error_handlers
+
+from core.security import apply_security, register_error_handlers
 
 from database import init_db
 from routers.auth import router as auth_router
@@ -21,6 +22,7 @@ from routers.zone_light_reading import router as zone_light_reading_router
 settings = get_settings()
 
 app = FastAPI(title="Vesper", version="0.1.0")
+apply_security(app, settings)
 register_error_handlers(app)
 
 
@@ -39,20 +41,7 @@ app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
 app.include_router(zone_light_reading_router, prefix="/api/zone-light-readings")
 
-origins = settings.CORS_ORIGINS
-if isinstance(origins, str):
-    origins = [o.strip() for o in origins.split(",")]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 @app.get("/health")
 def health_check():
-
     return {"status": "ok"}
