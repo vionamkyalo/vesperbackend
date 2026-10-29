@@ -122,7 +122,11 @@ class Settings(BaseSettings):
                 raise ValueError("Seed coordinator is missing: " + ", ".join(missing))
 
         if self.is_production:
-            if "*" in self.cors_allowed_origins:
+            if "*" in (
+                self.cors_allowed_origins
+                if isinstance(self.cors_allowed_origins, list)
+                else self.cors_allowed_origins.split(",")
+            ):
                 raise ValueError("Wildcard CORS origins are not allowed in production")
             if self.database_url.startswith("sqlite"):
                 raise ValueError("SQLite is not allowed in production")
