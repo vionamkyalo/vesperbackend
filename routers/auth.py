@@ -1,19 +1,8 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from core.security import (
-    AccountDeactivatedError,
-    AuthenticationError,
-    TooManyRequestsError,
-    audit_log,
-    client_ip,
-    create_access_token,
-    create_refresh_token,
-    get_login_tracker,
-    verify_password,
-)
+from core.security import audit_log, client_ip
 from database import get_db
-from repositories.user import user_repository
 from schemas.user import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
@@ -71,49 +60,4 @@ def login(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    tracker = get_login_tracker()
-    email = str(body.email).strip().lower()
-    ip = client_ip(request)
-    key = f"{ip}:{email}"
-
-    if tracker.is_locked(key):
-        audit_log(None, "login_blocked_locked", "user", email=email, ip=ip)
-        raise TooManyRequestsError()
-
-    user = user_repository.get_by_email(db, email)
-
-    password_valid = verify_password(
-        body.password,
-        user.password_hash if user is not None else None,
-    )
-
-    if user is None or not password_valid:
-        tracker.record_failure(key)
-        audit_log(
-            user.user_id if user is not None else None,
-            "login_failed",
-            "user",
-            email=email,
-            ip=ip,
-        )
-        if tracker.is_locked(key):
-            audit_log(
-                user.user_id if user is not None else None,
-                "account_locked",
-                "user",
-                email=email,
-                ip=ip,
-            )
-        raise AuthenticationError()
-
-    if not user.is_active:
-        audit_log(user.user_id, "login_blocked_deactivated", "user", ip=ip)
-        raise AccountDeactivatedError()
-
-    tracker.record_success(key)
-    audit_log(user.user_id, "login_success", "user", user.user_id, ip=ip)
-
-    return TokenResponse(
-        access_token=create_access_token(user.user_id, user.role.value),
-        refresh_token=create_refresh_token(user.user_id),
-    )
+    return user_service.login(db, str(body.email), body.password, client_ip(request))

@@ -11,7 +11,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.security import (
+    AccountDeactivatedError,
+    AuthenticationError,
+    TooManyRequestsError,
     ValidationFailedError,
+    audit_log,
+    create_access_token,
+    create_refresh_token,
+    get_login_tracker,
     hash_password,
     validate_password_strength,
     verify_password,
@@ -22,6 +29,7 @@ from schemas.user import (
     ForgotPasswordResponse,
     PasswordChange,
     ResetPasswordResponse,
+    TokenResponse,
     UserCreate,
     UserRead,
     UserUpdate,
@@ -421,6 +429,57 @@ class UserService:
         current_user.password_hash = hash_password(data.new_password)
         self._commit(db)
         logger.info("Password changed for %s", current_user.user_id)
+
+    def login(self, db: Session, email: str, password: str, ip: str) -> TokenResponse:
+        tracker = get_login_tracker()
+        email = email.strip().lower()
+        key = f"{ip}:{email}"
+
+        if tracker.is_locked(key):
+            audit_log(None, "login_blocked_locked", "user", email=email, ip=ip)
+            logger.warning("Login refused: too many failed attempts")
+            raise TooManyRequestsError()
+
+        user = user_repository.get_by_email(db, email)
+
+        password_valid = verify_password(
+            password,
+            user.password_hash if user is not None else None,
+        )
+
+        if user is None or not password_valid:
+            tracker.record_failure(key)
+            audit_log(
+                user.user_id if user is not None else None,
+                "login_failed",
+                "user",
+                email=email,
+                ip=ip,
+            )
+            if tracker.is_locked(key):
+                audit_log(
+                    user.user_id if user is not None else None,
+                    "account_locked",
+                    "user",
+                    email=email,
+                    ip=ip,
+                )
+            logger.warning("Login refused: wrong email or password")
+            raise AuthenticationError()
+
+        if not user.is_active:
+            audit_log(user.user_id, "login_blocked_deactivated", "user", ip=ip)
+            logger.warning("Login refused: user %s is deactivated", user.user_id)
+            raise AccountDeactivatedError()
+
+        tracker.record_success(key)
+        audit_log(user.user_id, "login_success", "user", user.user_id, ip=ip)
+        logger.info("User %s signed in", user.user_id)
+
+        return TokenResponse(
+            access_token=create_access_token(user.user_id, user.role.value),
+            refresh_token=create_refresh_token(user.user_id),
+        )
 
     def forgot_password(self, db: Session, email: str) -> ForgotPasswordResponse:
         user = user_repository.get_by_email(db, email.lower())
