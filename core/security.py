@@ -409,8 +409,8 @@ async def reject(
 class SecurityMiddleware:
     def __init__(self, app: ASGIApp, settings: Settings, limiter: SlidingWindowLimiter):
         self.app = app
-        self.max_request_bytes = settings.max_request_bytes
-        self.enforce_https = settings.is_production
+        self.max_bytes = settings.max_request_bytes
+        self.enable_hsts = settings.is_production
         self.limiter = limiter
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -425,7 +425,7 @@ class SecurityMiddleware:
         )
         scope.setdefault("state", {})["request_id"] = request_id
         started = time.perf_counter()
-        status = [500]
+        status = {"code": 500}
         path = scope.get("path", "")
 
         async def send_secured(message: Message) -> None:
@@ -492,7 +492,11 @@ class SecurityMiddleware:
 def apply_security(app: FastAPI, settings: Settings) -> None:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_allowed_origins,
+        allow_origins=(
+            settings.cors_allowed_origins.split(",")
+            if isinstance(settings.cors_allowed_origins, str)
+            else settings.cors_allowed_origins
+        ),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
