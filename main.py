@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_settings
 from core.security import register_error_handlers
-
 from database import init_db
 from routers.auth import router as auth_router
 from routers.user import router as user_router
@@ -24,7 +23,6 @@ settings = get_settings()
 app = FastAPI(title="Vesper", version="0.1.0")
 register_error_handlers(app)
 
-
 init_db()
 
 app.include_router(user_router, prefix="/api")
@@ -41,7 +39,7 @@ app.include_router(zone_setting_history_router, prefix="/api")
 app.include_router(alert_assignment_router, prefix="/api")
 app.include_router(zone_light_reading_router, prefix="/api/zone-light-readings")
 
-origins = settings.CORS_ORIGINS
+origins = settings.cors_allowed_origins
 if isinstance(origins, str):
     origins = [o.strip() for o in origins.split(",")]
 
@@ -56,5 +54,4 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-
     return {"status": "ok"}
