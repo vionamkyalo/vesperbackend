@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
+
 from core.config import get_settings
+
 from core.security import apply_security, register_error_handlers
 
 from database import init_db

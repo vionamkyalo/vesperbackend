@@ -34,10 +34,12 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
-    cors_allowed_origins: str | list[str] = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000",
-        validation_alias="CORS_ALLOWED_ORIGINS",
+    cors_allowed_origins: list[str] = []
+
+    cors_allowed_origin_regex: str | None = (
+        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     )
+
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     max_request_bytes: int = 1_000_000
     api_rate_limit_per_minute: int = 120
@@ -81,12 +83,11 @@ class Settings(BaseSettings):
     kariba_bbox: list[float] = [26.5, -18.6, 29.5, -16.3]
     min_clear_fraction: float = 0.3
 
-    smtp_host: str = ""
+    smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: SecretStr = SecretStr("")
     email_from: str = ""
-    frontend_url: str = "http://localhost:3000"
 
     @property
     def is_production(self) -> bool:

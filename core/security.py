@@ -350,9 +350,16 @@ def get_current_user(
     return user_from_token(db, credentials.credentials)
 
 
-def require_role(roles: UserRole) -> Callable[..., User]:
+def require_role(*roles: UserRole | set[UserRole]) -> Callable[..., User]:
+    allowed: set[UserRole] = set()
+    for item in roles:
+        if isinstance(item, (set, frozenset, list, tuple)):
+            allowed.update(item)
+        else:
+            allowed.add(item)
+
     def checker(user: User = Depends(get_current_user)) -> User:
-        if user.role not in roles:
+        if user.role not in allowed:
             raise PermissionDeniedError()
         return user
 
@@ -364,7 +371,7 @@ require_officer = require_role({UserRole.PATROL_OFFICER})
 require_any_user = require_role({UserRole.PATROL_COORDINATOR, UserRole.PATROL_OFFICER})
 
 
-def client_ip(request: Scope) -> str:
+def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
@@ -409,8 +416,8 @@ async def reject(
 class SecurityMiddleware:
     def __init__(self, app: ASGIApp, settings: Settings, limiter: SlidingWindowLimiter):
         self.app = app
-        self.max_bytes = settings.max_request_bytes
-        self.enable_hsts = settings.is_production
+        self.max_request_bytes = settings.max_request_bytes
+        self.enforce_https = settings.is_production
         self.limiter = limiter
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -420,10 +427,8 @@ class SecurityMiddleware:
 
         headers = dict(scope.get("headers") or [])
         incoming_id = headers.get(b"x-request-id", b"").decode("latin-1")
-        request_id = (
-            incoming_id if _REQUEST_ID_RE.match(incoming_id) else uuid.uuid4().hex
-        )
-        scope.setdefault("state", {})["request_id"] = request_id
+        req_id = incoming_id if _REQUEST_ID_RE.match(incoming_id) else uuid.uuid4().hex
+        scope.setdefault("state", {})["request_id"] = req_id
         started = time.perf_counter()
         status = {"code": 500}
         path = scope.get("path", "")
@@ -432,7 +437,7 @@ class SecurityMiddleware:
             if message["type"] == "http.response.start":
                 status["code"] = message["status"]
                 extra = [
-                    (b"x-request-id", request_id.encode()),
+                    (b"x-request-id", req_id.encode()),
                     (b"x-content-type-options", b"nosniff"),
                     (b"x-frame-options", b"DENY"),
                     (b"referrer-policy", b"no-referrer"),
@@ -445,7 +450,7 @@ class SecurityMiddleware:
                             b"default-src 'none'; frame-ancestors 'none'",
                         )
                     )
-                if self.enable_hsts:
+                if self.enforce_https:
                     extra.append(
                         (
                             b"strict-transport-security",
@@ -469,7 +474,7 @@ class SecurityMiddleware:
                 return
             length = headers.get(b"content-length")
             if length is not None and (
-                not length.isdigit() or int(length) > self.max_bytes
+                not length.isdigit() or int(length) > self.max_request_bytes
             ):
                 await reject(send_secured, 413, "Request body is too large")
                 return
@@ -479,7 +484,7 @@ class SecurityMiddleware:
                 "request",
                 extra={
                     "extra_fields": {
-                        "request_id": request_id,
+                        "request_id": req_id,
                         "method": scope.get("method"),
                         "path": path,
                         "status": status["code"],
@@ -498,8 +503,13 @@ def apply_security(app: FastAPI, settings: Settings) -> None:
             else settings.cors_allowed_origins
         ),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Request-ID",
+            "ngrok-skip-browser-warning",
+        ],
         expose_headers=["X-Request-ID"],
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
