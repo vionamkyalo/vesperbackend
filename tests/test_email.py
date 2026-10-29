@@ -59,7 +59,9 @@ def test_reset_email_contains_code(monkeypatch):
 def test_officer_credentials_email(monkeypatch):
     monkeypatch.setattr(email_service, "get_settings", fake_settings)
 
-    email_service.send_officer_credentials("officer@test.local", "Tendai", "Temp-Pass-1")
+    email_service.send_officer_credentials(
+        "officer@test.local", "Tendai", "Temp-Pass-1"
+    )
 
     message = FakeSMTP.sent[0]
     assert message["Subject"] == "Your Vesper patrol account"
@@ -67,8 +69,12 @@ def test_officer_credentials_email(monkeypatch):
 
 
 def test_missing_smtp_settings_raises(monkeypatch):
-    monkeypatch.setattr(email_service, "get_settings", lambda: fake_settings(password=""))
+    monkeypatch.setattr(
+        email_service, "get_settings", lambda: fake_settings(password="")
+    )
 
     with pytest.raises(RuntimeError):
-        email_service.send_password_reset_email("officer@test.local", "Tendai", "123456")
+        email_service.send_password_reset_email(
+            "officer@test.local", "Tendai", "123456"
+        )
     assert FakeSMTP.sent == []
