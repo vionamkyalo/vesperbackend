@@ -138,7 +138,6 @@ def make_location(db_session):
 @pytest.fixture
 def location_payload():
     return {
-        "location_id": str(uuid.uuid4()),
         "latitude": "-16.851000",
         "longitude": "28.049000",
         "accuracy_m": "8.50",
@@ -188,7 +187,6 @@ def call_api(client, method, path, body=None, headers=None):
 
 def create_payload(**overrides):
     body = {
-        "location_id": str(uuid.uuid4()),
         "latitude": "-16.851000",
         "longitude": "28.049000",
         "accuracy_m": "12.50",
@@ -334,6 +332,10 @@ class TestLocationSchemas:
         del payload["accuracy_m"]
         assert OfficerLocationCreate(**payload).accuracy_m is None
 
+    def test_location_id_cannot_be_supplied(self):
+        with pytest.raises(ValidationError):
+            OfficerLocationCreate(**create_payload(location_id=str(uuid.uuid4())))
+
 
 class TestLocationRepository:
     @pytest.fixture
@@ -427,3 +429,27 @@ class TestGeoRules:
         before = FakeFix("-16.850", "28.05", now, accuracy="600")
         after = FakeFix("-16.859", "28.05", now + timedelta(seconds=1), accuracy="600")
         assert evaluate_jump(before, after, 120) == (False, 0.0)
+
+
+class TestLocationIdIsServerGenerated:
+    def test_each_post_gets_its_own_generated_id(
+        self, client, officer_headers, location_payload
+    ):
+        first = client.post(
+            "/api/officer-locations", json=location_payload, headers=officer_headers
+        )
+        second = client.post(
+            "/api/officer-locations", json=location_payload, headers=officer_headers
+        )
+        assert first.status_code == second.status_code == 201
+        uuid.UUID(first.json()["location_id"])
+        assert first.json()["location_id"] != second.json()["location_id"]
+
+    def test_client_supplied_location_id_is_422(
+        self, client, officer_headers, location_payload
+    ):
+        location_payload["location_id"] = str(uuid.uuid4())
+        response = client.post(
+            "/api/officer-locations", json=location_payload, headers=officer_headers
+        )
+        assert response.status_code == 422

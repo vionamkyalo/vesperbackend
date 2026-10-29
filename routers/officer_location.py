@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from core.security import (
@@ -31,11 +31,10 @@ router = APIRouter(tags=["Officer Locations"])
 )
 def record_location(
     data: OfficerLocationCreate,
-    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer),
 ):
-    return OfficerLocationService(db).record_location(data, current_user, response)
+    return OfficerLocationService(db).record_location(data, current_user)
 
 
 @router.get("/me", response_model=OfficerLocationPage)

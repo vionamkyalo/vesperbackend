@@ -56,7 +56,6 @@ MAX_PAGE_SIZE = 500
 class OfficerLocationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    location_id: uuid.UUID
     alert_id: uuid.UUID | None = None
     latitude: Latitude
     longitude: Longitude

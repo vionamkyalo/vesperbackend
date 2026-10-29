@@ -4,8 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, Response, status
-from sqlalchemy.exc import IntegrityError
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
@@ -67,17 +66,6 @@ def evaluate_jump(
     return speed_kmh > max_speed_kmh, round(speed_kmh, 2)
 
 
-def _same_fix(stored: OfficerLocation, incoming: OfficerLocationCreate) -> bool:
-
-    return (
-        stored.alert_id == incoming.alert_id
-        and stored.latitude == incoming.latitude
-        and stored.longitude == incoming.longitude
-        and stored.recorded_at == incoming.recorded_at
-        and stored.accuracy_m == incoming.accuracy_m
-    )
-
-
 class OfficerLocationService:
     def __init__(self, db: Session):
         self.repo = OfficerLocationRepository(db)
@@ -111,32 +99,15 @@ class OfficerLocationService:
             limit=limit,
         )
 
-    def _replay_or_conflict(
-        self, stored: OfficerLocation, data: OfficerLocationCreate, officer: User
-    ) -> OfficerLocation:
-        if stored.officer_id != officer.user_id or not _same_fix(stored, data):
-            raise HTTPException(
-                409, "location_id is already used by a different location record"
-            )
-        self._annotate_jumps([stored])
-        return stored
-
     def record_location(
         self,
         data: OfficerLocationCreate,
         officer: User,
-        response: Response,
         now: datetime | None = None,
     ) -> OfficerLocation:
 
         settings = get_settings()
         now = now or _utcnow()
-
-        stored = self.repo.get_by_id(data.location_id)
-        if stored is not None:
-            location = self._replay_or_conflict(stored, data, officer)
-            response.status_code = status.HTTP_200_OK
-            return location
 
         if data.recorded_at > now + timedelta(
             minutes=settings.location_clock_skew_minutes
@@ -158,8 +129,9 @@ class OfficerLocationService:
                     403, "A location can only be linked to an alert assigned to you"
                 )
 
+        # location_id is never accepted from the client: the server generates it.
         location = OfficerLocation(
-            location_id=data.location_id,
+            location_id=uuid.uuid4(),
             officer_id=officer.user_id,
             alert_id=data.alert_id,
             latitude=data.latitude,
@@ -167,13 +139,7 @@ class OfficerLocationService:
             accuracy_m=data.accuracy_m,
             recorded_at=data.recorded_at,
         )
-        try:
-            location = self.repo.create(location)
-        except IntegrityError:
-            stored = self.repo.get_by_id(data.location_id)
-            if stored is None:
-                raise HTTPException(409, "Location could not be stored")
-            return self._replay_or_conflict(stored, data, officer), False
+        location = self.repo.create(location)
 
         self._annotate_jumps([location])
         audit_log.info(
@@ -183,7 +149,7 @@ class OfficerLocationService:
             location.alert_id,
             location.jump_flagged,
         )
-        return location, True
+        return location
 
     def list_my_locations(
         self, officer: User, query: LocationListQuery
