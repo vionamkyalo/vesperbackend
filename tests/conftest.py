@@ -19,7 +19,7 @@ from models.alert import Alert, AlertStatus
 from models.alert_assignment import AlertAssignment, AssignmentStatus
 from models.catch_check import CatchCheck
 from models.inspection import Inspection, InspectionOutcome, InspectionType
-from models.officer_location import OfficerLocation
+from models.officer_assignment import OfficerAssignment
 from models.user import User, UserRole
 from models.violation_report import ViolationReport, ViolationType
 from models.zone import Zone, ZoneType
@@ -296,7 +296,7 @@ def sample_catch_check(db_session, landing_inspection):
 
 @pytest.fixture
 def sample_location(db_session, sample_officer, sample_alert):
-    location = OfficerLocation(
+    location = OfficerAssignment(
         location_id=uuid.uuid4(),
         officer_id=sample_officer.user_id,
         alert_id=sample_alert.alert_id,

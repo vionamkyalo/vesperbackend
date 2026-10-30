@@ -34,12 +34,9 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
-    cors_allowed_origins: list[str] = []
-
-    cors_allowed_origin_regex: str | None = (
-        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    cors_allowed_origins: str | list[str] = (
+        "http://localhost:3000,http://127.0.0.1:3000"
     )
-
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     max_request_bytes: int = 1_000_000
     api_rate_limit_per_minute: int = 120
@@ -121,12 +118,14 @@ class Settings(BaseSettings):
             if missing:
                 raise ValueError("Seed coordinator is missing: " + ", ".join(missing))
 
+        origins = (
+            self.cors_allowed_origins
+            if isinstance(self.cors_allowed_origins, list)
+            else self.cors_allowed_origins.split(",")
+        )
+
         if self.is_production:
-            if "*" in (
-                self.cors_allowed_origins
-                if isinstance(self.cors_allowed_origins, list)
-                else self.cors_allowed_origins.split(",")
-            ):
+            if "*" in origins:
                 raise ValueError("Wildcard CORS origins are not allowed in production")
             if self.database_url.startswith("sqlite"):
                 raise ValueError("SQLite is not allowed in production")
