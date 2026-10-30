@@ -32,4 +32,4 @@ class User(Base):
         foreign_keys="AlertAssignment.officer_id",
     )
     inspections = relationship("Inspection", back_populates="officer")
-    locations = relationship("OfficerLocation", back_populates="officer")
+    locations = relationship("OfficerAssignment", back_populates="officer")
