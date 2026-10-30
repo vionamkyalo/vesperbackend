@@ -2,9 +2,11 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from models.zone_baseline import MoonBand
 from models.zone_light_reading import IngestionStatus
+from services.zone_baseline import moon_band_for
 
 
 class ZoneLightReadingCreate(BaseModel):
@@ -47,3 +49,8 @@ class ZoneLightReadingRead(BaseModel):
     hotspot_pixel_count: int | None
     cluster_count: int | None
     created_at: datetime
+
+    @computed_field
+    @property
+    def moon_band(self) -> MoonBand:
+        return moon_band_for(self.observation_date)

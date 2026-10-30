@@ -1,8 +1,4 @@
 from logging.config import fileConfig
-<<<<<<< HEAD
-from sqlalchemy.orm import declarative_base
-=======
->>>>>>> develop
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -70,13 +66,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-<<<<<<< HEAD
-        context.configure(connection=connection, target_metadata=Base.metadata)
-=======
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
->>>>>>> develop
 
         with context.begin_transaction():
             context.run_migrations()

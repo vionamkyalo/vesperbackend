@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-
+from services.zone_baseline import moon_band_for
 import core.security as security
 from database import get_db, utcnow
 from main import app
@@ -231,3 +231,14 @@ class TestRoutes:
         response = client.get(URL)
 
         assert response.status_code == 401, response.json()
+        
+    def test_reading_includes_moon_band_of_its_night(
+        self, client, db_session, sample_coordinator, sample_zone
+    ):
+        reading = create_reading(db_session, sample_zone)
+        log_in_as(sample_coordinator)
+
+        response = client.get(f"{URL}/{reading.reading_id}")
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["moon_band"] == moon_band_for(NIGHT).value
