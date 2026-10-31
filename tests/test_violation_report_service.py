@@ -17,7 +17,7 @@ from models import (  # noqa: F401
     alert_assignment,
     catch_check,
     inspection,
-    officer_location,
+    officer_assignment,
     user,
     violation_report,
     zone,

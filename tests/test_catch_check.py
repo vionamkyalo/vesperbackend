@@ -115,6 +115,7 @@ class TestCatchCheck:
 
     def test_catch_check_missing_inspection_id(self, db_session):
         check = CatchCheck(
+            catch_id=uuid.uuid4(),
             rig_identifier="KR-3001",
             rig_nights=3,
             catch_weight_kg=Decimal("100.00"),

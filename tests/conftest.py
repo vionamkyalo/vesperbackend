@@ -1,10 +1,13 @@
 import os
-
-os.environ.setdefault("DATABASE_URL", "sqlite://")
-
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+os.environ.setdefault(
+    "JWT_SECRET",
+    "test-only-secret-key-not-for-production",
+)
 
 import pytest
 from sqlalchemy import create_engine, event
@@ -16,7 +19,7 @@ from models.alert import Alert, AlertStatus
 from models.alert_assignment import AlertAssignment, AssignmentStatus
 from models.catch_check import CatchCheck
 from models.inspection import Inspection, InspectionOutcome, InspectionType
-from models.officer_location import OfficerLocation
+from models.officer_assignment import OfficerAssignment
 from models.user import User, UserRole
 from models.violation_report import ViolationReport, ViolationType
 from models.zone import Zone, ZoneType
@@ -25,6 +28,7 @@ from models.zone_light_reading import IngestionStatus, ZoneLightReading
 
 PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$dGVzdHNhbHQ$dGVzdGhhc2g"
 OBSERVATION_DATE = date(2026, 10, 10)
+
 ZONE_POLYGON = {
     "type": "Polygon",
     "coordinates": [
@@ -42,7 +46,9 @@ ZONE_POLYGON = {
 @pytest.fixture
 def engine():
     test_engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
 
     @event.listens_for(test_engine, "connect")
@@ -59,7 +65,11 @@ def engine():
 
 @pytest.fixture
 def db_session(engine):
-    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+    session = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )()
     yield session
     session.rollback()
     session.close()
@@ -206,7 +216,11 @@ def sample_assignment(db_session, sample_alert, sample_officer, sample_coordinat
 
 
 def make_inspection(
-    db_session, officer, zone, alert=None, inspection_type=InspectionType.SITE
+    db_session,
+    officer,
+    zone,
+    alert=None,
+    inspection_type=InspectionType.SITE,
 ):
     inspection = Inspection(
         inspection_id=uuid.uuid4(),
@@ -237,7 +251,11 @@ def sample_inspection(
 @pytest.fixture
 def landing_inspection(db_session, sample_officer, sample_zone):
     return make_inspection(
-        db_session, sample_officer, sample_zone, None, InspectionType.LANDING_SITE
+        db_session,
+        sample_officer,
+        sample_zone,
+        None,
+        InspectionType.LANDING_SITE,
     )
 
 
@@ -278,7 +296,7 @@ def sample_catch_check(db_session, landing_inspection):
 
 @pytest.fixture
 def sample_location(db_session, sample_officer, sample_alert):
-    location = OfficerLocation(
+    location = OfficerAssignment(
         location_id=uuid.uuid4(),
         officer_id=sample_officer.user_id,
         alert_id=sample_alert.alert_id,
@@ -309,5 +327,10 @@ _load_all_models()
 @pytest.fixture(autouse=True)
 def no_real_emails(monkeypatch):
     monkeypatch.setattr(
-        "services.user.send_officer_credentials", lambda *args, **kwargs: None
+        "services.user.send_officer_credentials",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "services.user.send_password_reset_email",
+        lambda *args, **kwargs: None,
     )
