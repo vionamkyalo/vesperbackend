@@ -231,7 +231,7 @@ class TestRoutes:
         response = client.get(URL)
 
         assert response.status_code == 401, response.json()
-        
+
     def test_reading_includes_moon_band_of_its_night(
         self, client, db_session, sample_coordinator, sample_zone
     ):
