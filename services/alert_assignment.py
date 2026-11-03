@@ -227,5 +227,38 @@ class AlertAssignmentService:
         )
         return assignment
 
+    def acknowledge_by_alert_id(self, db: Session, current_user: User, alert_id: uuid.UUID):
+        self.check_officer(current_user)
+        
+        assignment = self.get_active_assignment(db, alert_id)
+        if assignment is None or assignment.officer_id != current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Active assignment for this alert was not found."
+            )
+            
+        self.check_open(assignment)
+        if assignment.status != AssignmentStatus.ASSIGNED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A {assignment.status.value} assignment cannot be acknowledged."
+            )
+
+        now = utcnow()
+        assignment.status = AssignmentStatus.ACKNOWLEDGED
+        assignment.acknowledged_at = now
+        if assignment.alert:
+            assignment.alert.assignment_status = AssignmentStatus.ACKNOWLEDGED
+
+        assignment = alert_assignment_repository.update(db, assignment)
+
+        logger.info(
+            "assignment %s acknowledged via alert_id %s by %s",
+            assignment.assignment_id,
+            alert_id,
+            current_user.user_id,
+        )
+        return assignment
+
 
 alert_assignment_service = AlertAssignmentService()
