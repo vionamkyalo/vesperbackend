@@ -39,7 +39,6 @@ TEST_JWT_SECRET = "test-only-jwt-secret-for-pytest-runs-0123456789"
 
 @pytest.fixture(autouse=True)
 def fresh_settings(monkeypatch):
-
     if len(os.environ.get("JWT_SECRET", "")) < 32:
         monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     get_settings.cache_clear()
@@ -49,7 +48,6 @@ def fresh_settings(monkeypatch):
 
 @pytest.fixture
 def client(db_session):
-
     from fastapi.testclient import TestClient
 
     from database import get_db
@@ -66,9 +64,7 @@ def client(db_session):
 
 @pytest.fixture
 def headers_for():
-
     def _headers(user):
-
         token = create_access_token(user.user_id, user.role.value)
         return {"Authorization": f"Bearer {token}"}
 
@@ -109,7 +105,6 @@ def inactive_officer(db_session):
 
 @pytest.fixture
 def make_alert(db_session, sample_zone, sample_reading):
-
     def _make(
         cluster_label,
         confidence="0.6000",
@@ -897,7 +892,6 @@ class TestAlertAccessControl:
         )
 
     def test_deactivated_account_is_401(self, client, headers_for, inactive_officer):
-
         response = client.get(
             "/api/alerts/assigned/me", headers=headers_for(inactive_officer)
         )

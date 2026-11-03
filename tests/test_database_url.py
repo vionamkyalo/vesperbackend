@@ -7,7 +7,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_database_engine_uses_normalized_heroku_url():
-
     env = {
         **os.environ,
         "DATABASE_URL": "postgres://user:pass@localhost:5432/vesper",
