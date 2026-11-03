@@ -63,8 +63,8 @@ def acknowledge(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer),
 ):
-    
     return alert_assignment_service.acknowledge_by_alert_id(db, current_user, alert_id)
+
 
 @router.post("/{assignment_id}/fail", response_model=AlertAssignmentRead)
 def mark_failed(
