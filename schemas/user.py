@@ -23,6 +23,7 @@ class UserCreate(BaseModel):
     phone_number: str = Field(pattern=PHONE_PATTERN)
     email: EmailStr = Field(max_length=100)
     password: str = Field(min_length=12, max_length=128)
+    role: UserRole = UserRole.PATROL_OFFICER
 
     @field_validator("email")
     @classmethod
