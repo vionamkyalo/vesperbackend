@@ -2334,7 +2334,7 @@ class TestAlertAssignmentRouter:
 
     def test_router_acknowledge_bad_id(self, assignment_client, sample_officer):
         response = assignment_client.post(
-            f"{ASSIGN_API}/abc/acknowledge", headers=assignment_headers(sample_officer)
+            f"{ASSIGN_API}/acknowledge/abc", headers=assignment_headers(sample_officer)
         )
 
         assert response.status_code == 422
@@ -2368,12 +2368,6 @@ class TestAlertAssignmentRouter:
         )
 
         assert response.status_code == 404
-
-    def test_router_acknowledge_bad_id(self, assignment_client, sample_officer):
-        response = assignment_client.post(
-            f"{ASSIGN_API}/acknowledge/abc", headers=assignment_headers(sample_officer)
-        )
-        assert response.status_code == 422
 
     def test_router_fail_reported(
         self, assignment_client, db_session, sample_coordinator, sample_assignment
