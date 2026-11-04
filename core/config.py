@@ -34,10 +34,8 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=30, ge=1, le=60)
     refresh_token_ttl_days: int = Field(default=7, ge=1, le=30)
 
-    cors_allowed_origins: str | list[str] = (
-        "http://localhost:3000,http://127.0.0.1:3000"
-    )
-    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    cors_allowed_origins: str | list[str] = ""
+    allowed_hosts: list[str] = []
     max_request_bytes: int = 1_000_000
     api_rate_limit_per_minute: int = 120
     login_max_attempts: int = 5
@@ -123,10 +121,27 @@ class Settings(BaseSettings):
             if isinstance(self.cors_allowed_origins, list)
             else self.cors_allowed_origins.split(",")
         )
+        origins = [o.strip() for o in origins if o.strip()]
+
+        if not self.is_production and not self.allowed_hosts:
+            self.allowed_hosts = ["localhost", "127.0.0.1", "testserver"]
 
         if self.is_production:
+            if not origins:
+                raise ValueError("CORS_ALLOWED_ORIGINS must be set in production")
             if "*" in origins:
                 raise ValueError("Wildcard CORS origins are not allowed in production")
+            if not self.allowed_hosts or "*" in self.allowed_hosts:
+                raise ValueError(
+                    "ALLOWED_HOSTS must be set to real domains in production"
+                )
+            if any(
+                host in ("localhost", "127.0.0.1", "testserver")
+                for host in self.allowed_hosts
+            ):
+                raise ValueError(
+                    "Remove localhost/testserver from ALLOWED_HOSTS in production"
+                )
             if self.database_url.startswith("sqlite"):
                 raise ValueError("SQLite is not allowed in production")
             if self.create_tables_on_startup:
