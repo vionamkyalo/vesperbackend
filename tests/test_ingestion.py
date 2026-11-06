@@ -10,7 +10,7 @@ from pydantic import SecretStr
 from models.zone_light_reading import ZoneLightReading
 from services.ingestion import ingestion_service, read_points
 
-GRID = "HDFEOS/GRIDS/VNP_Grid_DNB/Data Fields"
+GRID = "HDFEOS/GRIDS/VIIRS_Grid_DNB_2d/Data Fields"
 SIZE = 240
 STEP = 10 / SIZE
 BBOX = [26.5, -18.6, 29.5, -16.3]

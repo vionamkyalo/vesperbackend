@@ -495,13 +495,14 @@ class SecurityMiddleware:
 
 
 def apply_security(app: FastAPI, settings: Settings) -> None:
+    origins = settings.cors_allowed_origins
+    if isinstance(origins, str):
+        origins = origins.split(",")
+    origins = [o.strip() for o in origins if o.strip()]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=(
-            settings.cors_allowed_origins.split(",")
-            if isinstance(settings.cors_allowed_origins, str)
-            else settings.cors_allowed_origins
-        ),
+        allow_origins=origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=[

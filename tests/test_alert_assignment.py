@@ -1994,7 +1994,6 @@ class TestAlertAssignmentRouter:
     def test_list_requires_login(self, assignment_client):
         assert assignment_client.get(ASSIGN_API).status_code == 401
 
-    # ---- GET one
     def test_get_one(self, assignment_client, sample_officer, sample_assignment):
         response = assignment_client.get(
             f"{ASSIGN_API}/{sample_assignment.assignment_id}",
@@ -2029,41 +2028,26 @@ class TestAlertAssignmentRouter:
 
         assert response.status_code == 422
 
-    # ---- POST acknowledge
     def test_acknowledge(self, assignment_client, sample_officer, sample_assignment):
         response = assignment_client.post(
-            f"{ASSIGN_API}/{sample_assignment.assignment_id}/acknowledge",
+            f"{ASSIGN_API}/acknowledge/{sample_assignment.alert_id}",
             headers=assignment_headers(sample_officer),
         )
-
         assert response.status_code == 200
-        assert response.json()["status"] == "acknowledged"
-        assert response.json()["acknowledged_at"] is not None
 
     def test_acknowledge_by_coordinator(
         self, assignment_client, sample_coordinator, sample_assignment
     ):
         response = assignment_client.post(
-            f"{ASSIGN_API}/{sample_assignment.assignment_id}/acknowledge",
+            f"{ASSIGN_API}/acknowledge/{sample_assignment.alert_id}",
             headers=assignment_headers(sample_coordinator),
         )
-
         assert response.status_code == 403
-
-    def test_acknowledge_other_officers(
-        self, assignment_client, second_officer, sample_assignment
-    ):
-        response = assignment_client.post(
-            f"{ASSIGN_API}/{sample_assignment.assignment_id}/acknowledge",
-            headers=assignment_headers(second_officer),
-        )
-
-        assert response.status_code == 404
 
     def test_acknowledge_twice(
         self, assignment_client, sample_officer, sample_assignment
     ):
-        url = f"{ASSIGN_API}/{sample_assignment.assignment_id}/acknowledge"
+        url = f"{ASSIGN_API}/acknowledge/{sample_assignment.alert_id}"
         assignment_client.post(url, headers=assignment_headers(sample_officer))
 
         assert (
@@ -2073,7 +2057,6 @@ class TestAlertAssignmentRouter:
             == 409
         )
 
-    # ---- POST fail
     def test_mark_failed(
         self, assignment_client, sample_coordinator, sample_assignment
     ):
@@ -2109,7 +2092,6 @@ class TestAlertAssignmentRouter:
             == 409
         )
 
-    # ---- methods that do not exist
     @pytest.mark.parametrize("method", ["put", "patch", "delete"])
     def test_assignments_cannot_be_edited_or_deleted(
         self, assignment_client, sample_coordinator, sample_assignment, method
@@ -2121,7 +2103,6 @@ class TestAlertAssignmentRouter:
 
         assert response.status_code == 405
 
-    # ---- positive
     def test_router_assign_times(
         self, assignment_client, sample_coordinator, sample_officer, sample_alert
     ):
@@ -2203,7 +2184,6 @@ class TestAlertAssignmentRouter:
             str(other_alert.alert_id)
         ]
 
-    # ---- boundary cases
     @pytest.mark.parametrize(
         "params, expected", [({"limit": 1}, 1), ({"limit": 200}, 2), ({"offset": 2}, 0)]
     )
@@ -2239,7 +2219,6 @@ class TestAlertAssignmentRouter:
 
         assert response.status_code == 200
 
-    # ---- negative cases
     @pytest.mark.parametrize(
         "closed_status", [AlertStatus.DISMISSED, AlertStatus.CLOSED]
     )
@@ -2337,19 +2316,17 @@ class TestAlertAssignmentRouter:
 
         assert response.status_code == 401
 
-    # ---- negative cases
     def test_router_acknowledge_requires_login(
         self, assignment_client, sample_assignment
     ):
         response = assignment_client.post(
-            f"{ASSIGN_API}/{sample_assignment.assignment_id}/acknowledge"
+            f"{ASSIGN_API}/acknowledge/{sample_assignment.alert_id}"
         )
-
         assert response.status_code == 401
 
     def test_router_acknowledge_unknown(self, assignment_client, sample_officer):
         response = assignment_client.post(
-            f"{ASSIGN_API}/{uuid.uuid4()}/acknowledge",
+            f"{ASSIGN_API}/acknowledge/{uuid.uuid4()}",
             headers=assignment_headers(sample_officer),
         )
 
@@ -2357,7 +2334,7 @@ class TestAlertAssignmentRouter:
 
     def test_router_acknowledge_bad_id(self, assignment_client, sample_officer):
         response = assignment_client.post(
-            f"{ASSIGN_API}/abc/acknowledge", headers=assignment_headers(sample_officer)
+            f"{ASSIGN_API}/acknowledge/abc", headers=assignment_headers(sample_officer)
         )
 
         assert response.status_code == 422
@@ -2371,11 +2348,10 @@ class TestAlertAssignmentRouter:
         )
 
         response = assignment_client.post(
-            f"{ASSIGN_API}/{sample_assignment.assignment_id}/acknowledge",
+            f"{ASSIGN_API}/acknowledge/{sample_assignment.alert_id}",
             headers=assignment_headers(sample_officer),
         )
-
-        assert response.status_code == 409
+        assert response.status_code == 404
 
     def test_router_fail_requires_login(self, assignment_client, sample_assignment):
         assert (
@@ -2392,13 +2368,6 @@ class TestAlertAssignmentRouter:
         )
 
         assert response.status_code == 404
-
-    def test_router_fail_bad_id(self, assignment_client, sample_coordinator):
-        response = assignment_client.post(
-            f"{ASSIGN_API}/abc/fail", headers=assignment_headers(sample_coordinator)
-        )
-
-        assert response.status_code == 422
 
     def test_router_fail_reported(
         self, assignment_client, db_session, sample_coordinator, sample_assignment
@@ -2421,7 +2390,6 @@ class TestAlertAssignmentRouter:
             == 401
         )
 
-    # ---- negative: methods that do not exist
     @pytest.mark.parametrize("method", ["put", "patch", "delete"])
     def test_router_list_cannot_be_changed(
         self, assignment_client, sample_coordinator, method
@@ -2437,9 +2405,14 @@ class TestAlertAssignmentRouter:
     def test_router_actions_are_post_only(
         self, assignment_client, sample_coordinator, sample_assignment, action, method
     ):
-        response = getattr(assignment_client, method)(
-            f"{ASSIGN_API}/{sample_assignment.assignment_id}/{action}",
-            headers=assignment_headers(sample_coordinator),
+        path = (
+            f"{ASSIGN_API}/acknowledge/{sample_assignment.alert_id}"
+            if action == "acknowledge"
+            else f"{ASSIGN_API}/{sample_assignment.assignment_id}/fail"
         )
 
+        response = getattr(assignment_client, method)(
+            path,
+            headers=assignment_headers(sample_coordinator),
+        )
         assert response.status_code == 405

@@ -31,7 +31,6 @@ def haversine_m(
     lat2: Decimal | float,
     lon2: Decimal | float,
 ) -> float:
-
     phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
     d_phi = phi2 - phi1
     d_lambda = math.radians(float(lon2) - float(lon1))
@@ -105,7 +104,6 @@ class OfficerAssignmentService:
         officer: User,
         now: datetime | None = None,
     ) -> OfficerAssignment:
-
         settings = get_settings()
         now = now or _utcnow()
 
@@ -183,7 +181,6 @@ class OfficerAssignmentService:
     def check_arrival(
         self, alert_id: uuid.UUID, current_user: User
     ) -> ArrivalCheckRead:
-
         settings = get_settings()
 
         alert = self.repo.get_alert(alert_id)
@@ -246,7 +243,6 @@ class OfficerAssignmentService:
     def purge_expired_locations(
         self, current_user: User | None = None, now: datetime | None = None
     ) -> AssignmentPurgeResult:
-
         settings = get_settings()
         now = now or _utcnow()
         cutoff = now - timedelta(days=settings.location_retention_days)

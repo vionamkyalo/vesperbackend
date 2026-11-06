@@ -41,7 +41,6 @@ class OfficerAssignmentRepository:
         ).first()
 
     def officer_was_assigned(self, alert: Alert, officer_id: uuid.UUID) -> bool:
-
         if alert.officer_id == officer_id:
             return True
         return (

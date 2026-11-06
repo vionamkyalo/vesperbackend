@@ -57,13 +57,13 @@ def get_assignment(
     return alert_assignment_service.get_assignment(db, current_user, assignment_id)
 
 
-@router.post("/{assignment_id}/acknowledge", response_model=AlertAssignmentRead)
+@router.post("/acknowledge/{alert_id}", response_model=AlertAssignmentRead)
 def acknowledge(
-    assignment_id: uuid.UUID,
+    alert_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer),
 ):
-    return alert_assignment_service.acknowledge(db, current_user, assignment_id)
+    return alert_assignment_service.acknowledge_by_alert_id(db, current_user, alert_id)
 
 
 @router.post("/{assignment_id}/fail", response_model=AlertAssignmentRead)

@@ -20,7 +20,7 @@ from services.zone_baseline import zone_baseline_service
 
 logger = logging.getLogger(__name__)
 
-GRID_FIELDS = "HDFEOS/GRIDS/VNP_Grid_DNB/Data Fields"
+GRID_FIELDS = "HDFEOS/GRIDS/VIIRS_Grid_DNB_2d/Data Fields"
 TILE_DEGREES = 10
 
 
