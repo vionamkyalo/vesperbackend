@@ -58,7 +58,6 @@ def _in_polygon(x: float, y: float, rings: list) -> bool:
 def point_in_geojson(
     lat: Decimal | float, lon: Decimal | float, geometry: dict | None
 ) -> bool | None:
-
     if not isinstance(geometry, dict):
         return None
     geometry_type = geometry.get("type")

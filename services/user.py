@@ -228,7 +228,7 @@ class UserService:
             phone_number=data.phone_number,
             email=email,
             password_hash=hash_password(data.password),
-            role=UserRole.PATROL_OFFICER,
+            role=data.role,
             is_active=True,
         )
 

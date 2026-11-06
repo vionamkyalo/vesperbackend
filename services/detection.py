@@ -42,6 +42,16 @@ def cluster_labels(points: list[DetectionPoint], radius_m: float, min_points: in
     return model.fit(coords).labels_.tolist()
 
 
+def spread_for(baseline, zone: Zone) -> float:
+    """Never smaller than the light of one minimal cluster.
+
+    A quiet zone's baseline can be 0 with a tiny spread, which would turn
+    any small cluster into a near-100% alert.
+    """
+    minimal_cluster = float(zone.radiance_threshold) * zone.min_cluster_points
+    return max(float(baseline.spread), minimal_cluster)
+
+
 def confidence_from(score: float) -> float:
     """Map an anomaly score to 0–1: 0.5 at the threshold, approaching 1 as it grows."""
     return score / (score + SCORE_THRESHOLD)
@@ -111,8 +121,8 @@ class DetectionService:
             if baseline is None or not clusters:
                 continue
 
-            score = (light_index - float(baseline.expected_light_index)) / float(
-                baseline.spread
+            score = (light_index - float(baseline.expected_light_index)) / spread_for(
+                baseline, zone
             )
             confidence = confidence_from(score) if score > 0 else 0.0
             if score < SCORE_THRESHOLD or confidence < float(zone.confidence_threshold):

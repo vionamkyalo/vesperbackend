@@ -343,7 +343,7 @@ class TestUserSchema:
             ("email", "not-an-email"),
             ("password", "Short1"),
             ("password", "x" * 129),
-            ("role", "patrol_coordinator"),
+            ("role", "admin"),
             ("is_active", False),
         ],
     )
@@ -763,8 +763,32 @@ class TestUserRouter:
         assert "password" not in data
         assert "password_hash" not in data
 
-    def test_create_officer_cannot_set_role(self, client, sample_coordinator):
+    def test_create_user_defaults_to_officer(self, client, sample_coordinator):
+        response = client.post(
+            API, json=valid_body(), headers=auth_headers(sample_coordinator)
+        )
+
+        assert response.json()["role"] == "patrol_officer"
+
+    def test_coordinator_can_create_coordinator(self, client, sample_coordinator):
         body = valid_body(role="patrol_coordinator")
+
+        response = client.post(API, json=body, headers=auth_headers(sample_coordinator))
+
+        assert response.status_code == 201
+        assert response.json()["role"] == "patrol_coordinator"
+
+    def test_create_coordinator_duplicate_email(
+        self, client, sample_coordinator, sample_officer
+    ):
+        body = valid_body(role="patrol_coordinator", email="tendai@example.org")
+
+        response = client.post(API, json=body, headers=auth_headers(sample_coordinator))
+
+        assert response.status_code == 409
+
+    def test_create_user_rejects_unknown_role(self, client, sample_coordinator):
+        body = valid_body(role="admin")
 
         assert (
             client.post(

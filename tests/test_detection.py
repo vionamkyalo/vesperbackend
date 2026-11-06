@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -11,7 +12,7 @@ from models.zone_light_reading import ZoneLightReading
 from schemas.detection import DetectionPoint, DetectionRun
 from services.detection import detection_service
 
-NIGHT = date(2026, 10, 10)  # a dark-moon night
+NIGHT = date(2026, 10, 10)
 
 
 def lights(count, radiance=50.0, near_shore=False):
@@ -54,7 +55,23 @@ class TestDetectionService:
         assert len(result.alerts) == 1
         assert alert.zone_id == sample_zone.zone_id
         assert alert.point_count == 4
-        assert result.alerts[0].confidence == pytest.approx(0.9709, abs=1e-4)
+
+        assert result.alerts[0].confidence == pytest.approx(0.5263, abs=1e-4)
+
+    def test_zero_baseline_needs_more_than_one_small_cluster(
+        self, db_session, sample_coordinator, sample_zone, sample_baseline
+    ):
+        sample_baseline.expected_light_index = 0
+        sample_baseline.spread = Decimal("0.1000")
+        db_session.commit()
+
+        result = detection_service.run(
+            db_session,
+            sample_coordinator,
+            DetectionRun(observation_date=NIGHT, points=lights(3, radiance=12.0)),
+        )
+
+        assert result.alerts == []
 
     def test_no_baseline_means_no_alert(
         self, db_session, sample_coordinator, sample_zone

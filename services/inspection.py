@@ -67,7 +67,6 @@ class InspectionService:
         return alert
 
     def mark_alert_reported(self, db: Session, current_user: User, alert):
-
         now = utcnow()
         alert.assignment_status = AssignmentStatus.REPORTED
         alert.reported_at = now
